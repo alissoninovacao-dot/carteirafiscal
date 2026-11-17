@@ -1,0 +1,7 @@
+{% extends "auth/base_auth.html" %}
+{% block titulo %}Esqueci minha senha{% endblock %}
+{% block conteudo %}
+<h2 class="acesso-titulo">Esqueci minha senha</h2>
+<p class="text-muted">A redefinição de senha é feita pelo administrador do sistema. Entre em contato com o suporte (<b>suporte@contabilizape.com.br</b>) e peça uma nova senha.</p>
+<a class="btn btn-primary w-100 mt-2" href="{{ url_for('auth.login') }}"><i class="bi bi-arrow-left"></i> Voltar ao login</a>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% set cc = c if c is defined else none %}
+<div><label class="form-label">Nome da carteira *</label><input class="form-control" name="nome" required value="{{ cc.nome if cc else 'Carteira ' ~ proximo }}"></div>
+<div><label class="form-label">Descrição</label><input class="form-control" name="descricao" value="{{ (cc.descricao if cc else '') or '' }}"></div>
+<div><label class="form-label">Responsável pela carteira</label>
+  <select class="form-select" name="responsavel_id"><option value="">— definir depois —</option>
+    {% for p in pessoas %}<option value="{{ p.id }}" {{ 'selected' if cc and cc.responsavel_id == p.id }}>{{ p.nome }} · {{ p.cargo }}</option>{% endfor %}</select></div>
+<div><label class="form-label">Cor</label><div class="cores">
+  {% for cor in cores %}<input type="radio" name="cor" id="cor{{ loop.index }}{{ cc.id if cc else 'n' }}" value="{{ cor }}" {{ 'checked' if (cc and cc.cor == cor) or (not cc and loop.first) }}><label for="cor{{ loop.index }}{{ cc.id if cc else 'n' }}" style="--c: {{ cor }}"></label>{% endfor %}
+</div></div>

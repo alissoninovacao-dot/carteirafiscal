@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block titulo %}Entregas{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Entregas fiscais</h1><div class="text-muted">{% if colab %}Suas entregas, por obrigação.{% else %}Acompanhe as entregas de cada colaborador, carteira e cliente.{% endif %} As colunas são as obrigações (ICMS/IPI, PGDAS-D, Contribuições…); o andamento de cada entrega fica no cartão.</div></div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" {{ 'hidden' if colab }} href="{{ url_for('entregas.demandas') }}"><i class="bi bi-ui-checks-grid"></i> Demandas e prazos</a>
+    <button class="btn btn-outline-primary" id="btnGerar" {{ 'hidden' if colab }}><i class="bi bi-magic"></i> Gerar entregas do período</button>
+    <button class="btn btn-laranja" id="btnNova" {{ 'hidden' if colab }}><i class="bi bi-plus-lg"></i> Nova entrega</button>
+  </div>
+</div>
+
+<div class="bloco mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-lg-2"><label class="form-label" id="rotuloPeriodo">Competência</label>
+      <input type="month" class="form-control form-control-sm" id="fComp" value="{{ mensal }}">
+      <input type="number" min="2000" max="2100" class="form-control form-control-sm" id="fAno" value="{{ anual }}" hidden></div>
+    <div class="col-6 col-lg-2" {{ 'hidden' if colab }}><label class="form-label">Equipe</label><select class="form-select form-select-sm" id="fEquipe"></select></div>
+    <div class="col-6 col-lg-2" {{ 'hidden' if colab }}><label class="form-label">Colaborador</label><select class="form-select form-select-sm" id="fResp"></select></div>
+    <div class="col-6 col-lg-2"><label class="form-label">Carteira</label><select class="form-select form-select-sm" id="fCart"></select></div>
+    <div class="col-6 col-lg-2"><label class="form-label">Status</label><select class="form-select form-select-sm" id="fStatus"></select></div>
+  </div>
+  <div class="position-relative mt-3"><i class="bi bi-search position-absolute top-50 translate-middle-y ms-3 text-muted"></i>
+    <input type="search" class="form-control ps-5" id="fBusca" placeholder="Pesquisar em tudo: obrigação, empresa, CNPJ, carteira, responsável, equipe, regime, UF, status, observação…" autocomplete="off"></div>
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+    <div class="btn-group btn-group-sm" role="group" title="Obrigações mensais (por competência) ou anuais (por ano-calendário)">
+      <button class="btn btn-primary" id="pMensal"><i class="bi bi-calendar3"></i> Mensais</button>
+      <button class="btn btn-outline-secondary" id="pAnual"><i class="bi bi-calendar-range"></i> Anuais</button>
+    </div>
+    <div class="btn-group btn-group-sm" role="group">
+      <button class="btn btn-primary" id="vQuadro"><i class="bi bi-kanban"></i> Quadro</button>
+      <button class="btn btn-outline-secondary" id="vTabela"><i class="bi bi-table"></i> Tabela</button>
+    </div>
+    <div class="flex-grow-1" style="min-width:240px"><div class="d-flex justify-content-between small fw-semibold mb-1"><span id="rProg">—</span><span id="rAlertas"></span></div>
+      <div class="progress" style="height:8px"><div class="progress-bar bg-success" id="rBarra" style="width:0"></div></div></div>
+    <button class="btn btn-sm btn-link" id="fLimpar">limpar filtros</button>
+  </div>
+</div>
+
+<div class="bloco mb-3" id="chipsBloco">
+  <div class="d-flex flex-wrap align-items-center gap-2"><span class="small fw-bold text-uppercase text-muted me-1"><i class="bi bi-funnel"></i> Demandas</span>
+    <div class="d-flex flex-wrap gap-2" id="chips"></div><button class="btn btn-sm btn-link" id="chipsTodas">mostrar todas</button></div>
+</div>
+
+<div class="bloco mb-3" id="indic">
+  <div class="bloco-cabecalho"><h2><i class="bi bi-bar-chart-line"></i> Indicadores</h2><span class="small text-muted" id="indFiltros"></span></div>
+  <div class="ind-grade" id="indKpis"></div>
+  <div class="d-flex flex-wrap align-items-center gap-2 mt-3 mb-2"><span class="small fw-bold text-uppercase text-muted">Agrupar por</span>
+    <div class="btn-group btn-group-sm" id="indGrupo"></div><span class="small text-muted ms-2">clique numa linha para filtrar</span></div>
+  <div id="indLinhas"></div>
+</div>
+
+<div id="vistaQuadro"><div class="kanban" id="kanban"></div></div>
+<div id="vistaTabela" hidden><div class="bloco p-0 overflow-hidden"><div class="table-responsive" style="max-height: 70vh">
+  <table class="table table-hover tabela"><thead id="thead" style="position:sticky;top:0;background:#fff;z-index:2"></thead>
+  <tbody id="tbody"></tbody></table></div></div></div>
+<div id="vazio" class="bloco text-center text-muted py-5" hidden></div>
+
+<!-- Detalhe (painel lateral, como "peek" do Notion) -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="detalhe" style="width: 460px">
+  <div class="offcanvas-header"><h5 class="offcanvas-title" id="dTitulo">Entrega</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
+  <div class="offcanvas-body vstack gap-3">
+    <div><span class="etipo" id="dTipo"></span><div class="fs-5 fw-bold mt-1" id="dCliente"></div><div class="small text-muted" id="dSub"></div><div class="small mt-2" id="dDesc"></div></div>
+    <div class="info-usuario small" id="dResp"></div>
+    <div><label class="form-label">Status</label><div class="d-flex flex-wrap gap-1" id="dStatus"></div></div>
+    <div class="row g-2"><div class="col-6"><label class="form-label">Vencimento</label><input type="date" class="form-control" id="dVenc"></div>
+      <div class="col-6" id="dEntregueBox"><label class="form-label">Entregue em</label><input type="date" class="form-control" id="dEntregue"></div></div>
+    <div><label class="form-label">Observações</label><textarea class="form-control" rows="5" id="dObs" placeholder="Pendências, protocolo, retorno do cliente…"></textarea></div>
+    <div class="text-danger small" id="dErro"></div>
+    <div class="d-flex justify-content-between"><button class="btn btn-outline-danger" id="dExcluir"><i class="bi bi-trash"></i> Excluir</button><button class="btn btn-primary" id="dSalvar">Salvar</button></div>
+  </div>
+</div>
+
+<!-- Nova entrega -->
+<div class="modal fade" id="mNova" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Nova entrega</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body vstack gap-3">
+    <div><label class="form-label">Cliente *</label><input class="form-control" id="nCliente" list="listaClientes" placeholder="Digite para buscar…" autocomplete="off"><datalist id="listaClientes"></datalist></div>
+    <div><label class="form-label">Tipo de entrega *</label><select class="form-select" id="nTipo"></select></div>
+    <div class="row g-2"><div class="col-6"><label class="form-label" id="nRotulo">Competência</label><input type="month" class="form-control" id="nComp"><input type="number" min="2000" max="2100" class="form-control" id="nAno" hidden></div>
+      <div class="col-6"><label class="form-label">Vencimento</label><input type="date" class="form-control" id="nVenc"><div class="form-text">Vazio = calculado pela regra da obrigação.</div></div></div>
+    <div class="text-danger small" id="nErro"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-primary" id="nSalvar">Criar entrega</button></div>
+</div></div></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLAB = {{ colab|tojson }};
+const STATUS = {{ status|tojson }}, EQUIPES = {{ equipes|tojson }}, PESSOAS = {{ pessoas|tojson }}, CARTEIRAS = {{ carteiras|tojson }};
+const CLIENTES = {{ clientes|tojson }}, REGIMES = {{ regimes|tojson }}, REGRAS = {{ regras|tojson }}, REQUER = {{ requer|tojson }};
+let periodo = 'mensal', sel = new Set(), grupo = 'tipo';
+let TIPOS = {{ tipos|tojson }}, ENT = [], vista = 'quadro', atual = null, tempo;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const stInfo = k => STATUS.find(s => s[0] === k) || STATUS[0];
+const fmt = (iso, ano) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + (ano ? '/' + iso.slice(0, 4) : '') : '—';
+async function api(url, metodo = 'GET', corpo) {
+  const r = await fetch(url, {method: metodo, headers: {'Content-Type': 'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.erro || 'Não foi possível concluir.');
+  return d;
+}
+const opts = (lista, rotulo, extra = []) => `<option value="">${rotulo}</option>` + extra.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('') + lista.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
+
+/* ---------- filtros ---------- */
+function montarFiltros() {
+  const q = new URLSearchParams(location.search);
+  $('fEquipe').innerHTML = opts(EQUIPES.map(e => [e.id, e.nome]), 'Todas as equipes', [['0', '— sem equipe —']]);
+  $('fCart').innerHTML = opts(CARTEIRAS.map(c => [c.id, `${c.nome}${c.resp ? ' · ' + c.resp : ''}`]), 'Todas as carteiras', [['0', '— sem carteira —']]);
+  $('fStatus').innerHTML = opts(STATUS.map(s => [s[0], s[1]]), 'Todos os status');
+  $('nTipo').innerHTML = TIPOS.filter(t => t.ativo).map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('');
+  $('listaClientes').innerHTML = CLIENTES.map(c => `<option value="${esc(c.nome)} — ${esc(c.cnpj)}">`).join('');
+  const cp = q.get('competencia') || ''; periodo = cp.length === 4 ? 'anual' : 'mensal'; if (cp.length === 4) $('fAno').value = cp; else if (cp) $('fComp').value = cp;
+  $('fEquipe').value = q.get('equipe') || '';
+  montarResponsaveis(); $('fResp').value = q.get('responsavel') || ''; $('fCart').value = q.get('carteira') || '';
+  $('fStatus').value = q.get('status') || ''; $('fBusca').value = q.get('q') || ''; sel = new Set((q.get('tipos') || '').split(',').filter(Boolean).map(Number));
+  vista = q.get('vista') === 'quadro' ? 'quadro' : 'tabela'; aplicarPeriodo();
+}
+function montarResponsaveis() {
+  const eq = $('fEquipe').value, lista = PESSOAS.filter(p => !eq || eq === '0' ? (eq === '0' ? !p.time_id : true) : String(p.time_id) === eq);
+  const atualV = $('fResp').value;
+  $('fResp').innerHTML = opts(lista.map(p => [p.id, `${p.nome} · ${p.cargo}`]), 'Todos os colaboradores', [['0', '— sem responsável —']]);
+  $('fResp').value = [...$('fResp').options].some(o => o.value === atualV) ? atualV : '';
+}
+function aplicarPeriodo() {
+  const a = periodo === 'anual';
+  $('fComp').hidden = a; $('fAno').hidden = !a; $('rotuloPeriodo').textContent = a ? 'Ano-calendário' : 'Competência';
+  $('pMensal').className = 'btn ' + (a ? 'btn-outline-secondary' : 'btn-primary'); $('pAnual').className = 'btn ' + (a ? 'btn-primary' : 'btn-outline-secondary');
+}
+const rotuloPeriodo = c => c.length === 4 ? `ano-calendário ${c}` : `competência ${c.slice(5)}/${c.slice(0, 4)}`;
+function params() {
+  const p = new URLSearchParams();
+  [['competencia', periodo === 'anual' ? 'fAno' : 'fComp'], ['equipe', 'fEquipe'], ['responsavel', 'fResp'], ['carteira', 'fCart'], ['q', 'fBusca']].forEach(([k, id]) => { const v = $(id).value.trim(); if (v) p.set(k, v); });
+  return p;
+}
+async function carregar() {
+  const p = params(); const u = new URLSearchParams(p); if (vista === 'quadro') u.set('vista', 'quadro'); if (sel.size) u.set('tipos', [...sel].join(',')); if ($('fStatus').value) u.set('status', $('fStatus').value);
+  history.replaceState(null, '', '/entregas' + (u.toString() ? '?' + u : ''));
+  ENT = await api('/api/entregas?' + p); desenhar();
+}
+
+/* ---------- desenho ---------- */
+function chipVenc(e) {
+  if (!e.vencimento) return '<span class="evenc sem">sem data</span>';
+  if (e.status === 'entregue') return `<span class="evenc ok"><i class="bi bi-check2"></i> ${fmt(e.entregue_em || e.vencimento)}</span>`;
+  const cls = e.atrasada ? 'atrasada' : (e.dias <= 3 ? 'proxima' : '');
+  return `<span class="evenc ${cls}"><i class="bi bi-calendar-event"></i> ${fmt(e.vencimento)}${e.atrasada ? ' · atrasada' : (e.dias === 0 ? ' · hoje' : '')}</span>`;
+}
+function card(e) {
+  return `<div class="ecard ${e.atrasada ? 'atras' : ''} ${e.status === 'entregue' ? 'feito' : ''}" data-id="${e.id}">
+    <div class="ecliente">${esc(e.cliente)}</div>
+    <div class="d-flex justify-content-between align-items-center gap-1 mb-2">${chipVenc(e)}<select class="form-select form-select-sm sel-status sel-card" data-id="${e.id}" style="--c:${stInfo(e.status)[2]}">${STATUS.map(s => `<option value="${s[0]}" ${s[0] === e.status ? 'selected' : ''}>${s[1]}</option>`).join('')}</select></div>
+    <div class="efoot"><span class="avatar" title="${esc(e.resp || 'Sem responsável')}" style="--av:${e.resp_cor};width:22px;height:22px;font-size:.6rem">${esc(e.resp_ini)}</span>
+      <span class="ecart">${esc(e.carteira || 'sem carteira')}</span>${e.movimento === 'NÃO' ? '<span class="evenc sem" title="Empresa marcada como sem movimento">sem mov.</span>' : ''}${e.obs ? '<i class="bi bi-chat-left-text ms-auto text-muted" title="Tem observações"></i>' : ''}</div></div>`;
+}
+const vis = () => ENT.filter(e => (!sel.size || sel.has(e.tipo_id)) && (!$('fStatus').value || e.status === $('fStatus').value));
+function resumo() {
+  const V = vis();
+  const total = V.length, ok = V.filter(e => e.status === 'entregue').length, atras = V.filter(e => e.atrasada).length;
+  const prox = V.filter(e => e.status !== 'entregue' && e.dias !== null && e.dias >= 0 && e.dias <= 3).length;
+  $('rProg').textContent = total ? `${ok} de ${total} entregues (${Math.round(ok / total * 100)}%)` : 'Nenhuma entrega';
+  $('rBarra').style.width = (total ? ok / total * 100 : 0) + '%';
+  $('rAlertas').innerHTML = (atras ? `<span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> ${atras} atrasada(s)</span>` : '') + (prox ? ` <span class="text-warning-emphasis ms-2"><i class="bi bi-clock"></i> ${prox} vencem em até 3 dias</span>` : '');
+}
+function desenhar() {
+  resumo(); desenharChips(); indicadores();
+  const V = vis();
+  const filtrando = [...params().keys()].some(k => k !== 'competencia') || sel.size || $('fStatus').value;
+  aplicarPeriodo();
+  $('vazio').hidden = V.length > 0; $('indic').hidden = $('chipsBloco').hidden = !ENT.length;
+  $('vazio').innerHTML = filtrando ? 'Nenhuma entrega com estes filtros.' : 'Nenhuma entrega neste período. Clique em <b>Gerar entregas do período</b>: o sistema cria os cartões só das obrigações que cada empresa possui (regime, ICMS e serviços).';
+  $('vistaQuadro').hidden = vista !== 'quadro' || !V.length; $('vistaTabela').hidden = vista !== 'tabela' || !V.length;
+  $('vQuadro').className = 'btn ' + (vista === 'quadro' ? 'btn-primary' : 'btn-outline-secondary'); $('vTabela').className = 'btn ' + (vista === 'tabela' ? 'btn-primary' : 'btn-outline-secondary');
+  if (vista === 'quadro') {
+    const ordem = (a, b) => (a.status === 'entregue') - (b.status === 'entregue') || (a.vencimento || '9').localeCompare(b.vencimento || '9') || a.cliente.localeCompare(b.cliente);
+    const tipos = TIPOS.filter(t => t.ativo && t.periodicidade === periodo && (!sel.size || sel.has(t.id)) && (t.geracao !== 'manual' || ENT.some(e => e.tipo_id === t.id)));
+    $('kanban').innerHTML = tipos.map(t => {
+      const lista = V.filter(e => e.tipo_id === t.id).sort(ordem), ok = lista.filter(e => e.status === 'entregue').length, atras = lista.filter(e => e.atrasada).length;
+      return `<div class="ecoluna" data-tipo="${t.id}" style="--c:${t.cor}"><div class="ecol-cab"><span class="ponto" style="--c:${t.cor}"></span><div class="flex-grow-1"><b>${esc(t.nome)}</b><div class="small text-muted fw-semibold">${ok} de ${lista.length} entregues${atras ? ` · <span class="text-danger">${atras} atrasada(s)</span>` : ''}</div></div><span class="pill">${lista.length}</span></div>
+        <div class="progress mb-2" style="height:5px"><div class="progress-bar" style="width:${lista.length ? ok / lista.length * 100 : 0}%;background:${t.cor}"></div></div>
+        <div class="ecol-corpo">${lista.map(card).join('') || '<div class="ecol-vazia">Nenhuma entrega</div>'}</div></div>`;
+    }).join('');
+  } else {
+    const tipos = TIPOS.filter(t => t.ativo && t.periodicidade === periodo && V.some(e => e.tipo_id === t.id));
+    $('thead').innerHTML = `<tr><th class="ps-3 col-cli">Cliente</th>${tipos.map(t => `<th class="col-dem"><span class="etipo" style="--c:${t.cor}">${esc(t.nome)}</span></th>`).join('')}<th>Colaborador</th><th>Carteira</th></tr>`;
+    const porCli = new Map();
+    V.forEach(e => { if (!porCli.has(e.cliente_id)) porCli.set(e.cliente_id, []); porCli.get(e.cliente_id).push(e); });
+    const clientes = [...porCli.values()].sort((a, b) => a[0].cliente.localeCompare(b[0].cliente));
+    $('tbody').innerHTML = clientes.map(lista => { const c = lista[0], ok = lista.filter(e => e.status === 'entregue').length, at = lista.filter(e => e.atrasada).length;
+      const cel = t => { const e = lista.find(x => x.tipo_id === t.id); if (!e) return '<td class="cel-vazia">—</td>'; const [, , cor] = stInfo(e.status);
+        return `<td class="cel-ent ${e.atrasada ? 'atras' : ''} ${e.status === 'entregue' ? 'feito' : ''}" data-id="${e.id}"><select class="form-select form-select-sm sel-status sel-card" data-id="${e.id}" style="--c:${cor}">${STATUS.map(s => `<option value="${s[0]}" ${s[0] === e.status ? 'selected' : ''}>${s[1]}</option>`).join('')}</select><div class="mt-1">${chipVenc(e)}</div></td>`; };
+      return `<tr class="linha-cli"><td class="ps-3 col-cli"><a class="fw-semibold text-reset text-decoration-none" href="/clientes/${c.cliente_id}">${esc(c.cliente)}</a>
+        <div class="small text-muted">${esc(c.cnpj || 'sem CNPJ')} · ${esc(c.tributacao || 'regime n/i')}${c.movimento === 'NÃO' ? ' · <span class="text-warning-emphasis">sem mov.</span>' : ''}</div>
+        <div class="small mt-1"><span class="pill ${ok === lista.length ? '' : 'sem'}">${ok}/${lista.length} entregues</span>${at ? ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${at}</span>` : ''}</div></td>
+        ${tipos.map(cel).join('')}
+        <td>${c.resp ? `<span class="ponto me-1" style="--c:${c.resp_cor}"></span>${esc(c.resp)}` : '—'}</td><td>${c.carteira ? `<span class="pill">${esc(c.carteira)}</span>` : '<span class="pill sem">sem carteira</span>'}</td></tr>`; }).join('');
+  }
+}
+
+/* ---------- caixinhas de demanda ---------- */
+function desenharChips() {
+  const tipos = TIPOS.filter(t => t.ativo && t.periodicidade === periodo && (t.geracao !== 'manual' || ENT.some(e => e.tipo_id === t.id)));
+  $('chips').innerHTML = tipos.map(t => { const n = ENT.filter(e => e.tipo_id === t.id).length;
+    return `<button type="button" class="chip-dem ${sel.has(t.id) ? 'sel' : ''}" data-id="${t.id}" style="--c:${t.cor}"><span class="ponto" style="--c:${t.cor}"></span>${esc(t.nome)}<b>${n}</b></button>`; }).join('');
+  $('chipsTodas').hidden = !sel.size;
+}
+$('chips').addEventListener('click', e => { const b = e.target.closest('.chip-dem'); if (!b) return; const id = +b.dataset.id; sel.has(id) ? sel.delete(id) : sel.add(id); salvarUrl(); desenhar(); });
+$('chipsTodas').onclick = () => { sel.clear(); salvarUrl(); desenhar(); };
+function salvarUrl() { const u = new URLSearchParams(location.search); sel.size ? u.set('tipos', [...sel].join(',')) : u.delete('tipos'); history.replaceState(null, '', '/entregas?' + u); }
+
+/* ---------- indicadores ---------- */
+const GRUPOS = {
+  tipo: ['Obrigação', e => [e.tipo_id, e.tipo, e.cor]],
+  resp: ['Colaborador', e => [e.resp_id ?? 0, e.resp || 'Sem responsável', e.resp_cor]],
+  cart: ['Carteira', e => [e.carteira_id ?? 0, e.carteira || 'Sem carteira', '#64748b']],
+  equipe: ['Equipe', e => [e.equipe_id ?? 0, e.equipe_id ? (EQUIPES.find(x => x.id === e.equipe_id)?.nome || 'Equipe') : 'Sem equipe', '#0ea5e9']],
+  regime: ['Regime', e => [e.tributacao || '—', e.tributacao || 'Não informado', '#8b5cf6']],
+  status: ['Status', e => [e.status, stInfo(e.status)[1], stInfo(e.status)[2]]],
+};
+function indicadores() {
+  const fs = [['fEquipe', 'Equipe'], ['fResp', 'Colaborador'], ['fCart', 'Carteira'], ['fStatus', 'Status']].filter(([id]) => $(id).value).map(([id, r]) => `${r}: ${$(id).selectedOptions[0].textContent}`);
+  if ($('fBusca').value.trim()) fs.push(`Busca: "${$('fBusca').value.trim()}"`); if (sel.size) fs.push(`Demandas: ${[...sel].map(i => TIPOS.find(t => t.id === i)?.nome).join(', ')}`);
+  $('indFiltros').innerHTML = fs.length ? `<span class="text-warning-emphasis fw-semibold"><i class="bi bi-funnel-fill"></i> Filtrando por ${esc(fs.join(' · '))}</span>` : 'Considera todas as empresas do período (sem filtros)';
+  const V = vis(), n = f => V.filter(f).length, ok = n(e => e.status === 'entregue');
+  const kp = [['Total', V.length, 'bi-list-check', ''], ['Entregues', ok, 'bi-check2-circle', 'verde'], ['Em aberto', V.length - ok, 'bi-hourglass-split', 'laranja'],
+    ['Atrasadas', n(e => e.atrasada), 'bi-exclamation-triangle', 'vermelho'], ['Vencem em 3 dias', n(e => e.status !== 'entregue' && e.dias !== null && e.dias >= 0 && e.dias <= 3), 'bi-clock', 'laranja'],
+    ['Sem responsável', n(e => !e.resp_id), 'bi-person-x', 'cinza'], ['Sem vencimento', n(e => !e.vencimento && e.status !== 'entregue'), 'bi-calendar-x', 'cinza']];
+  $('indKpis').innerHTML = kp.map(([r, v, i, c]) => `<div class="ind-kpi"><div class="kpi-icone ${c}"><i class="bi ${i}"></i></div><div><div class="kpi-valor">${v}</div><div class="kpi-rotulo">${r}</div></div></div>`).join('');
+  $('indGrupo').innerHTML = Object.entries(GRUPOS).map(([k, [r]]) => `<button type="button" class="btn ${k === grupo ? 'btn-primary' : 'btn-outline-secondary'}" data-g="${k}">${r}</button>`).join('');
+  const m = new Map();
+  V.forEach(e => { const [id, nome, cor] = GRUPOS[grupo][1](e); const g = m.get(id) || {id, nome, cor, t: 0, ok: 0, at: 0}; g.t++; if (e.status === 'entregue') g.ok++; if (e.atrasada) g.at++; m.set(id, g); });
+  const linhas = [...m.values()].sort((a, b) => b.t - a.t), max = Math.max(1, ...linhas.map(g => g.t));
+  $('indLinhas').innerHTML = linhas.length ? linhas.map(g => `<div class="ind-linha" data-id="${esc(g.id)}"><div class="ind-nome"><span class="ponto" style="--c:${g.cor}"></span>${esc(g.nome)}</div>
+    <div class="ind-barra" title="${g.ok} entregues · ${g.at} atrasadas · ${g.t - g.ok - g.at} no prazo"><div style="width:${g.t / max * 100}%"><i class="b-ok" style="flex:${g.ok}"></i><i class="b-at" style="flex:${g.at}"></i><i class="b-ab" style="flex:${g.t - g.ok - g.at}"></i></div></div>
+    <div class="ind-num"><b>${g.ok}</b>/${g.t} <span class="text-muted">(${Math.round(g.ok / g.t * 100)}%)</span>${g.at ? ` <span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> ${g.at}</span>` : ''}</div></div>`).join('') : '<div class="text-muted small">Sem dados para os filtros atuais.</div>';
+}
+$('indGrupo').addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (b) { grupo = b.dataset.g; indicadores(); } });
+$('indLinhas').addEventListener('click', e => {
+  const l = e.target.closest('.ind-linha'); if (!l) return; const id = l.dataset.id;
+  if (grupo === 'tipo') { sel.has(+id) ? sel.delete(+id) : sel.add(+id); salvarUrl(); desenhar(); }
+  else if (grupo === 'status') { $('fStatus').value = $('fStatus').value === id ? '' : id; carregar(); }
+  else if (grupo === 'resp') { $('fResp').value = id; carregar(); }
+  else if (grupo === 'cart') { $('fCart').value = id; carregar(); }
+  else if (grupo === 'equipe') { $('fEquipe').value = id; montarResponsaveis(); carregar(); }
+});
+
+/* ---------- status ---------- */
+async function mudarStatus(ent, status) {
+  const antes = {...ent}; ent.status = status; desenhar();   // atualiza na hora; volta atrás se falhar
+  try { Object.assign(ent, await api(`/api/entregas/${ent.id}`, 'PUT', {status})); } catch (err) { Object.assign(ent, antes); alert(err.message); }
+  desenhar();
+}
+$('kanban').addEventListener('click', e => { if (e.target.closest('select')) return; const c = e.target.closest('.ecard'); if (c) abrirDetalhe(+c.dataset.id); });
+$('tbody').addEventListener('click', e => { if (e.target.closest('select, a')) return; const r = e.target.closest('.cel-ent'); if (r) abrirDetalhe(+r.dataset.id); });
+[$('kanban'), $('tbody')].forEach(el => el.addEventListener('change', e => { const s = e.target.closest('.sel-status'); if (s) mudarStatus(ENT.find(x => x.id === +s.dataset.id), s.value); }));
+
+/* ---------- detalhe ---------- */
+const oc = new bootstrap.Offcanvas($('detalhe'));
+function abrirDetalhe(id) {
+  atual = ENT.find(e => e.id === id); if (!atual) return; $('dErro').textContent = '';
+  const e = atual; $('dTipo').textContent = e.tipo; $('dTipo').style.setProperty('--c', e.cor);
+  $('dCliente').innerHTML = `<a class="text-reset" href="/clientes/${e.cliente_id}">${esc(e.cliente)}</a>`;
+  $('dSub').textContent = `${e.cnpj || 'sem CNPJ'} · ${e.tributacao || 'regime não informado'} · ${rotuloPeriodo(e.competencia)}`;
+  $('dDesc').innerHTML = (e.tipo_desc ? esc(e.tipo_desc) : '') + (e.tipo_fonte ? `<div class="text-muted">Fonte: ${esc(e.tipo_fonte)}</div>` : '');
+  $('dResp').innerHTML = e.resp ? `<b>${esc(e.resp)}</b> · <a href="/carteiras/${e.carteira_id}">${esc(e.carteira)}</a>` : (e.carteira ? `${esc(e.carteira)} · <b>sem responsável</b>` : '<b>Cliente sem carteira</b> — defina em Clientes ou Carteiras');
+  $('dStatus').innerHTML = STATUS.map(([k, n, c]) => `<button type="button" class="chip-st ${k === e.status ? 'sel' : ''}" data-k="${k}" style="--c:${c}">${n}</button>`).join('');
+  $('dVenc').value = e.vencimento; $('dEntregue').value = e.entregue_em; $('dObs').value = e.obs; $('dEntregueBox').hidden = e.status !== 'entregue';
+  $('dVenc').disabled = COLAB; $('dExcluir').hidden = COLAB;
+  oc.show();
+}
+$('dStatus').addEventListener('click', e => { const b = e.target.closest('.chip-st'); if (!b) return;
+  document.querySelectorAll('#dStatus .chip-st').forEach(x => x.classList.toggle('sel', x === b)); $('dEntregueBox').hidden = b.dataset.k !== 'entregue'; });
+$('dSalvar').onclick = async () => {
+  const k = document.querySelector('#dStatus .chip-st.sel')?.dataset.k || atual.status;
+  const corpo = {status: k, vencimento: $('dVenc').value, obs: $('dObs').value}; if (k === 'entregue') corpo.entregue_em = $('dEntregue').value;
+  try { Object.assign(atual, await api(`/api/entregas/${atual.id}`, 'PUT', corpo)); oc.hide(); desenhar(); } catch (err) { $('dErro').textContent = err.message; }
+};
+$('dExcluir').onclick = async () => {
+  if (!confirm(`Excluir a entrega ${atual.tipo} de ${atual.cliente}?`)) return;
+  try { await api(`/api/entregas/${atual.id}`, 'DELETE'); ENT = ENT.filter(e => e !== atual); oc.hide(); desenhar(); } catch (err) { $('dErro').textContent = err.message; }
+};
+
+/* ---------- nova entrega / gerar ---------- */
+const mNova = new bootstrap.Modal($('mNova'));
+function tipoNova() { return TIPOS.find(t => t.id === +$('nTipo').value); }
+function ajustarPeriodoNova() {
+  const anual = tipoNova()?.periodicidade === 'anual'; $('nComp').hidden = anual; $('nAno').hidden = !anual; $('nRotulo').textContent = anual ? 'Ano-calendário' : 'Competência';
+}
+$('nTipo').addEventListener('change', ajustarPeriodoNova);
+$('btnNova').onclick = () => { $('nErro').textContent = ''; $('nCliente').value = ''; $('nVenc').value = ''; $('nComp').value = $('fComp').value; $('nAno').value = $('fAno').value;
+  const t = TIPOS.find(x => x.ativo && x.periodicidade === periodo); if (t) $('nTipo').value = t.id; ajustarPeriodoNova(); mNova.show(); };
+$('nSalvar').onclick = async () => {
+  const txt = $('nCliente').value, c = CLIENTES.find(x => `${x.nome} — ${x.cnpj}` === txt) || CLIENTES.find(x => x.nome.toLowerCase() === txt.trim().toLowerCase());
+  if (!c) { $('nErro').textContent = 'Escolha um cliente da lista.'; return; }
+  try { await api('/api/entregas', 'POST', {cliente_id: c.id, tipo_id: +$('nTipo').value, competencia: tipoNova().periodicidade === 'anual' ? $('nAno').value : $('nComp').value, vencimento: $('nVenc').value}); mNova.hide();
+    if (tipoNova().periodicidade === 'anual') { periodo = 'anual'; $('fAno').value = $('nAno').value; } else { periodo = 'mensal'; $('fComp').value = $('nComp').value; } aplicarPeriodo(); carregar(); }
+  catch (err) { $('nErro').textContent = err.message; }
+};
+$('btnGerar').onclick = async () => {
+  const comp = periodo === 'anual' ? $('fAno').value : $('fComp').value; if (!comp) return alert('Escolha o período.');
+  if (!confirm(`Gerar as entregas (${rotuloPeriodo(comp)}) de todas as empresas ativas?\nSó entram as obrigações que cada empresa possui, conforme regime, ICMS e serviços (ajustáveis na tela do cliente). Entregas que já existem são mantidas.`)) return;
+  try { const d = await api('/api/entregas/gerar', 'POST', {competencia: comp}); await carregar();
+    alert(d.novas ? `${d.novas} entregas criadas:\n` + Object.entries(d.por_tipo).map(([k, v]) => `• ${k}: ${v}`).join('\n') : 'Nada novo a criar: todas já existiam.'); } catch (err) { alert(err.message); }
+};
+
+/* ---------- eventos ---------- */
+['fComp', 'fAno', 'fResp', 'fCart', 'fStatus'].forEach(id => $(id).addEventListener('change', carregar));
+$('pMensal').onclick = () => { periodo = 'mensal'; carregar(); }; $('pAnual').onclick = () => { periodo = 'anual'; carregar(); };
+$('fEquipe').addEventListener('change', () => { montarResponsaveis(); carregar(); });
+$('fBusca').addEventListener('input', () => { clearTimeout(tempo); tempo = setTimeout(carregar, 250); });
+$('vQuadro').onclick = () => { vista = 'quadro'; carregar(); }; $('vTabela').onclick = () => { vista = 'tabela'; carregar(); };
+$('fLimpar').onclick = () => { ['fEquipe', 'fResp', 'fCart', 'fStatus', 'fBusca'].forEach(id => $(id).value = ''); sel.clear(); montarResponsaveis(); carregar(); };
+montarFiltros(); carregar();
+</script>
+{% endblock %}

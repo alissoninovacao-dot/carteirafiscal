@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block titulo %}Carteiras{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Carteiras</h1><div class="text-muted">As mesmas equipes e carteiras do organograma: cada carteira tem um responsável e fica na equipe dele</div></div>
+  <button class="btn btn-laranja" data-bs-toggle="modal" data-bs-target="#modalNova"><i class="bi bi-plus-lg"></i> Nova carteira</button>
+</div>
+
+{% macro indicadores(r) %}
+  <div class="ind-corpo mt-2">
+    {% for titulo, itens in [('Ativas por tributação', r.detalhes.tributacao), ('Ativas por UF', r.detalhes.uf), ('Ativas por credenciamento', r.detalhes.credenciamento)] %}
+      <div class="ind-sec"><div class="ind-tit">{{ titulo }}</div>
+        {% for nome, n in itens %}<div class="ind-lin"><span>{{ nome }}</span><b>{{ n }}</b></div>
+          <div class="ind-barra"><i style="width: {{ (n / r.total * 100) if r.total else 0 }}%"></i></div>{% endfor %}</div>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{% for g in grupos %}
+{% set t = g.time %}
+<section class="mb-4">
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2" style="--c: {{ t.cor if t else '#94a3b8' }}">
+    <span class="ponto" style="--c: {{ t.cor if t else ('#002068' if g.coord else '#94a3b8') }}; width: 14px; height: 14px"></span>
+    <h2 class="fs-5 fw-bold m-0">{{ t.nome if t else ('Coordenação' if g.coord else 'Sem equipe') }}</h2>
+    {% if g.coord %}<span class="formato-pill" style="background: #002068">coordenação</span>
+      <span class="small text-muted">{{ g.coord.nome }} <em class="text-secondary">({{ g.coord.cargo }})</em></span>
+      <span class="ms-auto small text-muted"><b class="text-body">{{ g.resumo.total }}</b> empresas ativas · <b class="text-success">{{ g.resumo.com }}</b> com mov. · <b>{{ g.resumo.sem }}</b> sem mov.</span>
+    {% elif t %}<span class="formato-pill" style="background: {{ t.cor }}">{{ t.formato }}</span>
+      <span class="small text-muted">{% for m in t.membros|sort(attribute='nome') %}{{ m.nome }} <em class="text-secondary">({{ m.cargo }})</em>{{ ' · ' if not loop.last }}{% endfor %}</span>
+      <span class="ms-auto small text-muted"><b class="text-body">{{ g.resumo.total }}</b> empresas ativas · <b class="text-success">{{ g.resumo.com }}</b> com mov. · <b>{{ g.resumo.sem }}</b> sem mov.</span>
+    {% else %}<span class="small text-muted">carteiras cujo responsável ainda não está em uma equipe, ou sem responsável</span>{% endif %}
+  </div>
+  <div class="row g-3">
+    {% for c in g.carteiras %}
+    {% set r = c.resumo %}
+    <div class="col-md-6 col-xl-4"><div class="bloco card-carteira" style="--c: {{ t.cor if t else c.cor }}">
+      <a class="d-flex justify-content-between align-items-start text-reset" href="{{ url_for('carteiras.detalhe', cid=c.id) }}">
+        <h3 class="fs-5 fw-bold mb-1">{{ c.nome }}</h3><span class="pill">{{ c.total_clientes }} clientes</span></a>
+      {# todas as pessoas envolvidas: o responsável e os demais integrantes da equipe (dupla, trio…) #}
+      {% set envolvidos = ([c.responsavel] + (c.time.membros|sort(attribute='nome')|rejectattr('id', 'equalto', c.responsavel_id)|list if c.time else [])) if c.responsavel else [] %}
+      {% if envolvidos %}
+        <div class="vstack gap-2 my-2">
+        {% for p in envolvidos %}
+          <div class="d-flex align-items-center gap-2"><span class="avatar" style="--av: {{ p.cor }}; width: 32px; height: 32px; font-size: .72rem">{{ p.iniciais }}</span>
+            <div class="lh-sm flex-grow-1"><div class="small fw-bold">{{ p.nome }}</div><div class="small text-muted">{{ p.cargo }}</div></div>
+            {% if p.id == c.responsavel_id %}<span class="pill" title="Responsável pela carteira">responsável</span>{% else %}<span class="pill sem" title="Atua junto na equipe">apoio</span>{% endif %}</div>
+        {% endfor %}</div>
+      {% else %}<div class="my-2"><span class="pill sem">sem responsável</span></div>{% endif %}
+      <div class="no-time-rodape p-0 border-0">
+        <div class="empresas"><div><b>{{ r.total }}</b><span>empresas</span></div><div class="com"><b>{{ r.com }}</b><span>com mov.</span></div><div class="sem"><b>{{ r.sem }}</b><span>sem mov.</span></div></div>
+        <div class="regimes"><span>Simples <b>{{ r.simples }}</b></span><span>Presumido <b>{{ r.presumido }}</b></span><span>Real <b>{{ r.real }}</b></span>{% if r.outros %}<span>Outros <b>{{ r.outros }}</b></span>{% endif %}</div>
+      </div>
+      <details class="mt-1"><summary class="btn-ind">Ver indicadores</summary>{{ indicadores(r) }}</details>
+      <a class="btn btn-sm btn-outline-primary w-100 mt-2" href="{{ url_for('carteiras.detalhe', cid=c.id) }}">Abrir carteira</a>
+    </div></div>
+    {% else %}
+    <div class="col-12"><div class="bloco text-center text-muted py-3 small">Nenhuma carteira sob responsabilidade desta equipe.</div></div>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="bloco text-center text-muted py-5">Nenhuma carteira ainda. Clique em <strong>Nova carteira</strong> para começar.</div>
+{% endfor %}
+
+<div class="modal fade" id="modalNova" tabindex="-1"><div class="modal-dialog"><form class="modal-content" method="post" action="{{ url_for('carteiras.nova') }}">
+  <div class="modal-header"><h5 class="modal-title">Nova carteira</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body vstack gap-3">
+    {% include "carteiras/_campos.html" %}
+  </div>
+  <div class="modal-footer"><button class="btn btn-primary">Criar e inserir clientes</button></div>
+</form></div></div>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titulo %}Meu perfil{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Meu perfil</h1><div class="text-muted">Seus dados de acesso e a segurança da sua conta.</div></div>
+</div>
+
+{% if padrao %}
+<div class="alert alert-warning d-flex gap-2 align-items-start" id="avisoPadrao"><i class="bi bi-shield-exclamation fs-5"></i>
+  <div><b>Você ainda usa a senha padrão do sistema.</b> Troque por uma senha só sua no quadro "Alterar senha".</div></div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6"><div class="bloco h-100">
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <span class="avatar" style="--av: {{ p.cor if p else '#002068' }}; width: 64px; height: 64px; font-size: 1.4rem">{{ p.iniciais if p else u.nome[:1]|upper }}</span>
+      <div><div class="fs-4 fw-bold lh-sm">{{ u.nome }}</div><span class="pill">{{ u.perfil_label }}</span></div>
+    </div>
+    <table class="table table-sm mb-0"><tbody>
+      <tr><th class="text-muted fw-semibold" style="width:42%">E-mail de acesso</th><td>{{ u.email }}</td></tr>
+      <tr><th class="text-muted fw-semibold">Perfil</th><td>{{ u.perfil_label }}</td></tr>
+      {% if p %}
+      <tr><th class="text-muted fw-semibold">Cargo</th><td>{{ p.papel_nome }}</td></tr>
+      <tr><th class="text-muted fw-semibold">Equipe(s)</th><td>{% for e in equipes %}<span class="pill">{{ e.nome }}</span> <span class="text-muted small">{{ e.formato|lower }}</span> {% else %}—{% endfor %}</td></tr>
+      {% if not p.e_diretoria %}<tr><th class="text-muted fw-semibold">Carteiras</th><td>{% for c in carteiras %}<span class="pill">{{ c }}</span> {% else %}—{% endfor %}</td></tr>{% endif %}
+      {% endif %}
+      <tr><th class="text-muted fw-semibold">Situação</th><td><span class="badge-sit sit-ATIVO">ativo</span></td></tr>
+      <tr><th class="text-muted fw-semibold">Último acesso</th><td>{{ ultimo }}</td></tr>
+      <tr><th class="text-muted fw-semibold">Senha alterada em</th><td id="senhaEm">{{ senha_em }}</td></tr>
+      <tr><th class="text-muted fw-semibold">Esta sessão expira em</th><td>{{ sessao_ate }}</td></tr>
+    </tbody></table>
+    <div class="small text-muted mt-3"><i class="bi bi-info-circle"></i> Nome, e-mail, cargo e carteiras são mantidos pelo coordenador fiscal ou pelo administrador. Para corrigir algum dado, fale com eles.</div>
+  </div></div>
+
+  <div class="col-lg-6"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2><i class="bi bi-key"></i> Alterar senha</h2></div>
+    <form id="formSenha" autocomplete="off" novalidate>
+      <div class="mb-3"><label class="form-label" for="atual">Senha atual</label>
+        <div class="input-group"><input class="form-control" type="password" id="atual" autocomplete="current-password"><button type="button" class="btn btn-olho" data-olho="atual" aria-label="Mostrar"><i class="bi bi-eye"></i></button></div></div>
+      <div class="mb-1"><label class="form-label" for="nova">Nova senha</label>
+        <div class="input-group"><input class="form-control" type="password" id="nova" autocomplete="new-password"><button type="button" class="btn btn-olho" data-olho="nova" aria-label="Mostrar"><i class="bi bi-eye"></i></button></div></div>
+      <div class="progress mb-1" style="height:6px"><div class="progress-bar" id="forca" style="width:0"></div></div>
+      <div class="small text-muted mb-3" id="forcaTxt">Mínimo de 8 caracteres, com letras e números.</div>
+      <div class="mb-3"><label class="form-label" for="conf">Confirmar nova senha</label>
+        <div class="input-group"><input class="form-control" type="password" id="conf" autocomplete="new-password"><button type="button" class="btn btn-olho" data-olho="conf" aria-label="Mostrar"><i class="bi bi-eye"></i></button></div></div>
+      <div class="text-danger small mb-2" id="erro"></div><div class="text-success small mb-2" id="ok"></div>
+      <button class="btn btn-primary" id="btnSenha" type="submit"><i class="bi bi-check2"></i> Salvar nova senha</button>
+    </form>
+    <hr>
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div><div class="fw-semibold">Sair dos outros dispositivos</div><div class="small text-muted">Encerra seus logins em outros navegadores e computadores, mantendo este.</div></div>
+      <button class="btn btn-outline-secondary" id="btnOutros"><i class="bi bi-box-arrow-right"></i> Encerrar outros logins</button>
+    </div>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = id => document.getElementById(id);
+document.querySelectorAll('[data-olho]').forEach(b => b.addEventListener('click', () => { const c = $(b.dataset.olho), ver = c.type === 'password'; c.type = ver ? 'text' : 'password'; b.innerHTML = `<i class="bi bi-eye${ver ? '-slash' : ''}"></i>`; }));
+$('nova').addEventListener('input', () => {
+  const s = $('nova').value; let n = 0;
+  if (s.length >= 8) n++; if (s.length >= 12) n++; if (/[a-z]/.test(s) && /[A-Z]/.test(s)) n++; if (/\d/.test(s)) n++; if (/[^A-Za-z0-9]/.test(s)) n++;
+  const cor = ['#dc2626', '#dc2626', '#f59e0b', '#f59e0b', '#16a34a', '#16a34a'][n], txt = ['Muito fraca', 'Fraca', 'Razoável', 'Boa', 'Forte', 'Muito forte'][n];
+  $('forca').style.width = (s ? n * 20 : 0) + '%'; $('forca').style.background = cor; $('forcaTxt').textContent = s ? 'Força: ' + txt : 'Mínimo de 8 caracteres, com letras e números.';
+});
+async function api(url, corpo) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corpo || {})});
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.erro || 'Não foi possível concluir.'); return d;
+}
+$('formSenha').addEventListener('submit', async e => {
+  e.preventDefault(); $('erro').textContent = ''; $('ok').textContent = '';
+  try {
+    const d = await api('/api/perfil/senha', {atual: $('atual').value, nova: $('nova').value, confirmar: $('conf').value});
+    ['atual', 'nova', 'conf'].forEach(i => $(i).value = ''); $('nova').dispatchEvent(new Event('input'));
+    $('senhaEm').textContent = d.senha_em; $('avisoPadrao')?.remove(); $('ok').textContent = 'Senha alterada com sucesso. Seus outros logins foram encerrados.';
+  } catch (err) { $('erro').textContent = err.message; }
+});
+$('btnOutros').onclick = async () => {
+  if (!confirm('Encerrar seus logins em todos os outros dispositivos?')) return;
+  try { await api('/api/perfil/encerrar-outros'); alert('Pronto: os outros logins foram encerrados.'); } catch (err) { alert(err.message); }
+};
+</script>
+{% endblock %}

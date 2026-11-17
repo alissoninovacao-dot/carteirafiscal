@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block titulo %}{{ d.codigo }} {{ d.titulo }}{% endblock %}
+{% macro badge_prazo(d) %}
+  {% set s = d.situacao_prazo() %}
+  {% if s == 'atrasada' %}<span class="di-badge" style="--c:#dc2626"><i class="bi bi-exclamation-triangle-fill"></i> {{ -d.dias_para_prazo }}d em atraso</span>
+  {% elif s == 'hoje' %}<span class="di-badge" style="--c:#ea580c">vence hoje</span>
+  {% elif s == 'proxima' %}<span class="di-badge" style="--c:#ca8a04">em {{ d.dias_para_prazo }}d</span>
+  {% elif s == 'concluida_atrasada' %}<span class="di-badge" style="--c:#ca8a04">concluída com atraso</span>
+  {% elif s == 'concluida_no_prazo' %}<span class="di-badge" style="--c:#16a34a">concluída no prazo</span>{% endif %}
+{% endmacro %}
+{% block conteudo %}
+<nav class="small text-muted mb-2">
+  <a href="{{ url_for('internas.lista') }}"><i class="bi bi-clipboard2-check"></i> {{ 'Minhas demandas' if usuario_logado().e_colaborador else 'Controle de demandas' }}</a> <i class="bi bi-chevron-right"></i> <span>{{ d.codigo }}</span></nav>
+
+<div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+  <div class="min-w-0">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+      <span class="di-codigo fs-6">{{ d.codigo }}</span>
+      <span class="di-badge" style="--c:{{ d.prioridade_cor }}">{{ d.prioridade_label }}</span>
+      {% for t in d.etiquetas %}<span class="pill sem">{{ t.nome }}</span>{% endfor %}
+      {% if d.arquivada %}<span class="badge text-bg-secondary"><i class="bi bi-archive"></i> Arquivada</span>{% endif %}
+    </div>
+    <h1 class="fs-2 fw-bold m-0">{{ d.titulo }}</h1>
+  </div>
+  {% if gestor %}
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('internas.editar', did=d.id) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil"></i> Editar</a>
+    <div class="dropdown"><button class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end shadow">
+        <li><form method="post" action="{{ url_for('internas.duplicar', did=d.id) }}"><button class="dropdown-item"><i class="bi bi-copy"></i> Duplicar</button></form></li>
+        <li><form method="post" action="{{ url_for('internas.arquivar', did=d.id) }}"><button class="dropdown-item"><i class="bi bi-archive"></i> {{ 'Restaurar do arquivo' if d.arquivada else 'Arquivar' }}</button></form></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><form method="post" action="{{ url_for('internas.excluir', did=d.id) }}" onsubmit="return confirm('Excluir definitivamente esta demanda, o histórico e os anexos? Prefira arquivar.')"><button class="dropdown-item text-danger"><i class="bi bi-trash"></i> Excluir definitivamente</button></form></li>
+      </ul></div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- status -->
+<form method="post" action="{{ url_for('internas.status', did=d.id) }}" class="di-status mb-3">
+  {% for k, v in STATUS %}
+    {% set bloqueado = (d.status == k) or (not gestor and (k == 'concluido' or d.concluida)) %}
+    <button name="status" value="{{ k }}" class="{{ 'ativo' if d.status == k }}" style="--c:{{ {'a_iniciar': '#64748b', 'em_andamento': '#2563eb', 'concluido': '#16a34a'}[k] }}" {{ 'disabled' if bloqueado }}><i class="bi {{ STATUS_ICONE[k] }}"></i> {{ v }}</button>
+  {% endfor %}
+  {% if not gestor and not d.concluida and not d.aguardando_validacao %}
+  <button type="submit" formaction="{{ url_for('internas.informar_conclusao', did=d.id) }}" class="informar"><i class="bi bi-flag"></i> Informar que concluí</button>
+  {% endif %}
+</form>
+
+{% if d.impedimento %}
+<div class="alert alert-danger d-flex align-items-start gap-3"><i class="bi bi-exclamation-octagon-fill fs-4"></i>
+  <div class="flex-grow-1"><strong>Impedimento:</strong> {{ d.impedimento }}</div>
+  <form method="post" action="{{ url_for('internas.impedimento', did=d.id) }}"><input type="hidden" name="impedimento" value=""><button class="btn btn-sm btn-outline-danger bg-white">Marcar como resolvido</button></form></div>
+{% endif %}
+
+{% if d.aguardando_validacao %}
+<div class="alert alert-warning">
+  <div class="d-flex align-items-start gap-3"><i class="bi bi-flag-fill fs-4"></i>
+    <div><strong>{{ d.conclusao_informada_por }} informou que concluiu esta demanda</strong>
+      <div class="small">em {{ d.conclusao_informada_em.strftime('%d/%m/%Y %H:%M') }}{% if gestor %} · confira o histórico e os anexos antes de confirmar.{% else %} · aguardando a confirmação da coordenação.{% endif %}</div></div></div>
+  {% if gestor %}
+  <form method="post" action="{{ url_for('internas.validar_conclusao', did=d.id) }}" class="d-flex gap-2 flex-wrap mt-2">
+    <input name="comentario" class="form-control form-control-sm flex-grow-1" style="min-width:240px" placeholder="Comentário (opcional)">
+    <button name="acao" value="confirmar" class="btn btn-sm btn-success"><i class="bi bi-check-circle"></i> Confirmar conclusão</button>
+    <button name="acao" value="devolver" class="btn btn-sm btn-outline-secondary bg-white"><i class="bi bi-arrow-counterclockwise"></i> Devolver para ajustes</button>
+  </form>{% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    {% if d.descricao %}<div class="bloco mb-3"><div class="bloco-cabecalho"><h2>Descrição</h2></div><div style="white-space:pre-wrap">{{ d.descricao }}</div></div>{% endif %}
+
+    <div class="bloco mb-3" id="checklist">
+      <div class="bloco-cabecalho"><h2><i class="bi bi-check2-square"></i> Etapas / checklist</h2>{% if d.checklist %}<span class="pill">{{ d.checklist_feitos }}/{{ d.checklist_total }}</span>{% endif %}</div>
+      {% if d.checklist %}<div class="progress mb-2" style="height:8px"><div class="progress-bar bg-success" style="width:{{ d.progresso }}%"></div></div>{% endif %}
+      {% for i in d.checklist %}
+      <div class="di-etapa {{ 'feito' if i.concluido }}">
+        <form method="post" action="{{ url_for('internas.checklist_alternar', iid=i.id) }}" class="d-flex align-items-center gap-2 flex-grow-1">
+          <button class="di-check" title="{{ 'Reabrir' if i.concluido else 'Concluir' }}"><i class="bi {{ 'bi-check-square-fill' if i.concluido else 'bi-square' }}"></i></button>
+          <span class="flex-grow-1">{{ i.texto }}</span>{% if i.concluido_em %}<small class="text-muted">{{ i.concluido_em.strftime('%d/%m') }}</small>{% endif %}</form>
+        {% if gestor %}<form method="post" action="{{ url_for('internas.checklist_excluir', iid=i.id) }}"><button class="btn btn-sm btn-link text-danger p-0" title="Remover etapa"><i class="bi bi-trash"></i></button></form>{% endif %}
+      </div>
+      {% else %}<div class="text-muted small">Nenhuma etapa definida.</div>{% endfor %}
+      {% if gestor %}
+      <form method="post" action="{{ url_for('internas.checklist_add', did=d.id) }}" class="input-group input-group-sm mt-2">
+        <textarea name="texto" class="form-control" rows="1" placeholder="Nova etapa (uma por linha)"></textarea><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Adicionar</button></form>
+      {% endif %}
+    </div>
+
+    <div class="bloco mb-3" id="registrar">
+      <div class="bloco-cabecalho"><h2><i class="bi bi-journal-plus"></i> Registrar andamento</h2></div>
+      <form method="post" action="{{ url_for('internas.registro', did=d.id) }}" enctype="multipart/form-data">
+        {% if gestor %}<div class="d-flex gap-1 flex-wrap mb-2">
+          {% for k, v in CATEGORIAS %}<input type="radio" class="btn-check" name="categoria" id="cat{{ k }}" value="{{ k }}" {{ 'checked' if k == 'anotacao' }}><label class="btn btn-sm btn-outline-secondary" for="cat{{ k }}">{{ v }}</label>{% endfor %}</div>{% endif %}
+        <textarea name="texto" class="form-control mb-2" rows="3" placeholder="{{ 'Anote o que foi alinhado, decidido ou cobrado…' if gestor else 'Conte como está o andamento, dúvidas, o que foi feito…' }}"></textarea>
+        <div class="row g-2">
+          <div class="col-md-6"><input type="file" name="anexos" class="form-control form-control-sm" multiple></div>
+          <div class="col-md-3"><input name="link_url" class="form-control form-control-sm" placeholder="Link (opcional)"></div>
+          <div class="col-md-3"><input name="link_nome" class="form-control form-control-sm" placeholder="Nome do link"></div>
+          {% if gestor %}
+          <div class="col-md-6"><label class="form-label small mb-0">Próximo acompanhamento</label><input type="date" name="proximo_acompanhamento" class="form-control form-control-sm"></div>
+          <div class="col-md-6 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" name="visibilidade" value="interno" id="interno"><label class="form-check-label small" for="interno"><i class="bi bi-lock"></i> Registro reservado (só coordenação/diretoria vê)</label></div></div>
+          {% endif %}
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          {% if not d.impedimento %}<button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#boxImp"><i class="bi bi-exclamation-octagon"></i> Registrar impedimento</button>{% else %}<span></span>{% endif %}
+          <button class="btn btn-primary btn-sm"><i class="bi bi-send"></i> Registrar</button></div>
+      </form>
+      {% if not d.impedimento %}
+      <div class="collapse mt-2" id="boxImp"><form method="post" action="{{ url_for('internas.impedimento', did=d.id) }}" class="input-group input-group-sm">
+        <input name="impedimento" class="form-control" placeholder="O que está impedindo o andamento?" required><button class="btn btn-danger">Registrar</button></form></div>{% endif %}
+    </div>
+
+    <div class="bloco" id="historico">
+      <div class="bloco-cabecalho"><h2><i class="bi bi-clock-history"></i> Histórico</h2>
+        <div class="btn-group btn-group-sm"><a class="btn {{ 'btn-primary' if filtro == 'tudo' else 'btn-outline-secondary' }}" href="?ver=tudo#historico">Tudo</a>
+          <a class="btn {{ 'btn-primary' if filtro == 'registros' else 'btn-outline-secondary' }}" href="?ver=registros#historico">Só registros</a></div></div>
+      {% for e in eventos %}
+      <div class="di-evento {{ 'manifestacao' if e.e_manifestacao }}" id="ev{{ e.id }}">
+        <div class="di-ev-icone"><i class="bi {{ e.icone }}"></i></div>
+        <div class="flex-grow-1">
+          <div class="small"><b>{{ e.autor }}</b>{% if e.categoria_label and e.tipo == 'comentario' %} <span class="pill">{{ e.categoria_label }}</span>{% endif %}
+            {% if e.interno %}<span class="pill sem"><i class="bi bi-lock-fill"></i> reservado</span>{% endif %}
+            <span class="text-muted">· {{ e.criado_em.strftime('%d/%m/%Y %H:%M') }}</span></div>
+          {% if e.tipo == 'status' and e.dados and e.dados.get('de_label') and e.dados.get('de') != e.dados.get('para') %}<div class="small">Status: {{ e.dados.de_label }} → <b>{{ e.dados.para_label }}</b></div>{% endif %}
+          {% if e.texto %}<div style="white-space:pre-wrap">{{ e.texto }}</div>{% endif %}
+          {% for a in e.anexos %}<a class="di-anexo" href="{{ url_for('internas.anexo', aid=a.id) }}" target="_blank"><i class="bi {{ a.icone }}"></i> {{ a.nome }}</a>{% endfor %}
+        </div>
+        {% if gestor and e.tipo in ('comentario', 'anexo') %}<form method="post" action="{{ url_for('internas.evento_excluir', did=d.id, eid=e.id) }}" onsubmit="return confirm('Excluir este registro?')"><button class="btn btn-sm btn-link text-danger p-0" title="Excluir"><i class="bi bi-trash"></i></button></form>{% endif %}
+      </div>
+      {% else %}<div class="text-muted small">Sem registros.</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="bloco mb-3" id="detalhes">
+      <div class="bloco-cabecalho"><h2>Detalhes</h2></div>
+      <dl class="di-dl">
+        <dt>Status</dt><dd><span class="di-badge" style="--c:{{ d.status_cor }}">{{ d.status_label }}</span></dd>
+        <dt>Prazo</dt><dd>{% if d.prazo %}{{ d.prazo.strftime('%d/%m/%Y') }} {{ badge_prazo(d) }}{% else %}<span class="text-muted">sem prazo</span>{% endif %}</dd>
+        <dt>Início</dt><dd>{{ d.data_inicio.strftime('%d/%m/%Y') if d.data_inicio else '—' }}</dd>
+        {% if d.concluido_em %}<dt>Concluída em</dt><dd>{{ d.concluido_em.strftime('%d/%m/%Y') }}</dd>{% endif %}
+        {% if gestor %}<dt>Próx. acompanhamento</dt><dd>{{ d.proximo_acompanhamento.strftime('%d/%m/%Y') if d.proximo_acompanhamento else '—' }}</dd>{% endif %}
+        <dt>Criada por</dt><dd>{{ d.criado_por_nome or '—' }} <span class="text-muted small">em {{ d.criado_em.strftime('%d/%m/%Y') }}</span></dd>
+      </dl>
+    </div>
+    <div class="bloco mb-3">
+      <div class="bloco-cabecalho"><h2><i class="bi bi-people"></i> Atribuída a</h2></div>
+      {% if d.equipes %}<div class="d-flex flex-wrap gap-1 mb-2">{% for t in d.equipes %}<span class="pill" style="background:color-mix(in srgb, {{ t.cor }} 18%, #fff)"><i class="bi bi-diagram-3"></i> {{ t.nome }}</span>{% endfor %}</div>{% endif %}
+      {% for p in d.responsaveis %}
+        <div class="d-flex align-items-center gap-2 py-1"><span class="avatar" style="--av:{{ p.cor }}; width:30px; height:30px; font-size:.68rem">{{ p.iniciais }}</span>
+          <div class="lh-sm"><div class="small fw-semibold">{{ p.nome }}</div><div class="small text-muted">{{ p.cargo }}</div></div></div>
+      {% else %}<div class="text-muted small">Ninguém.</div>{% endfor %}
+    </div>
+    <div class="bloco" id="anexos">
+      <div class="bloco-cabecalho"><h2><i class="bi bi-paperclip"></i> Anexos <span class="pill">{{ d.anexos|length }}</span></h2></div>
+      {% for a in d.anexos %}
+      <div class="d-flex align-items-center gap-2 py-1 border-bottom">
+        <a class="di-anexo flex-grow-1 text-truncate" href="{{ url_for('internas.anexo', aid=a.id) }}" target="_blank"><i class="bi {{ a.icone }}"></i> {{ a.nome }}</a>
+        <small class="text-muted text-nowrap">{{ a.criado_em.strftime('%d/%m') }}</small>
+        {% if gestor %}<form method="post" action="{{ url_for('internas.anexo_excluir', aid=a.id) }}" onsubmit="return confirm('Remover o anexo?')"><button class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-x-lg"></i></button></form>{% endif %}
+      </div>
+      {% else %}<div class="text-muted small">Nenhum anexo. Anexe ao registrar andamento.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Carteira{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Carteira</h1><div class="text-muted">{% if equipe %}{{ equipe.nome }} · {{ equipe.formato|lower }}{% else %}Suas empresas{% endif %} — detalhamento somente para consulta</div></div>
+</div>
+
+{% for b in blocos %}
+{% set c = b.c %}{% set r = b.resumo %}
+<div class="bloco mb-3" style="border-top: 5px solid {{ equipe.cor if equipe else c.cor }}">
+  <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start">
+    <div><h2 class="fs-4 fw-bold m-0">{{ c.nome }}</h2><div class="text-muted small">{{ c.descricao or '' }}</div></div>
+    <div class="d-flex flex-wrap gap-3">
+      {% for p in b.envolvidos %}
+        <div class="d-flex align-items-center gap-2"><span class="avatar" style="--av: {{ p.cor }}; width: 34px; height: 34px; font-size: .75rem">{{ p.iniciais }}</span>
+          <div class="lh-sm"><div class="small fw-bold">{{ p.nome }}</div><div class="small text-muted">{{ p.cargo }}{{ ' · responsável' if p.id == c.responsavel_id else ' · apoio' }}</div></div></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="ind-kpis mt-3" style="grid-template-columns: repeat(6, 1fr)">
+    <div><b>{{ r.todas }}</b><span>cadastradas</span></div><div><b class="ok">{{ r.total }}</b><span>ativas</span></div><div><b>{{ r.inativas }}</b><span>inativas</span></div>
+    <div><b class="ok">{{ r.com }}</b><span>com mov.</span></div><div><b>{{ r.sem }}</b><span>sem mov.</span></div>
+    <div><b>{{ r.simples }}/{{ r.presumido }}/{{ r.real }}</b><span>simples/presum./real</span></div></div>
+  <div class="row g-3 mt-1">
+    {% for titulo, itens in [('Ativas por tributação', r.detalhes.tributacao), ('Ativas por UF', r.detalhes.uf), ('Ativas por credenciamento', r.detalhes.credenciamento)] %}
+    <div class="col-md-4"><div class="ind-tit">{{ titulo }}</div>
+      {% for nome, n in itens %}<div class="ind-lin"><span>{{ nome }}</span><b>{{ n }}</b></div><div class="ind-barra"><i style="width: {{ (n / r.total * 100) if r.total else 0 }}%"></i></div>{% endfor %}</div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="bloco text-center text-muted py-5">Você ainda não tem carteira atribuída. Fale com o coordenador fiscal.</div>
+{% endfor %}
+
+{% if clientes %}
+<div class="bloco p-0 overflow-hidden">
+  <div class="bloco-cabecalho p-3 pb-0"><h2><i class="bi bi-buildings"></i> Empresas da carteira <span class="pill" id="qtd">{{ clientes|length }}</span></h2>
+    <div class="d-flex gap-2"><select class="form-select form-select-sm" id="fCart" style="width:auto"><option value="">Todas as carteiras</option>{% for b in blocos %}<option>{{ b.c.nome }}</option>{% endfor %}</select>
+      <input class="form-control form-control-sm" style="width:260px" id="busca" type="search" placeholder="Buscar empresa ou CNPJ…" autocomplete="off"></div></div>
+  <div class="table-responsive" style="max-height:65vh"><table class="table table-hover tabela align-middle mb-0">
+    <thead style="position:sticky;top:0;background:#fff;z-index:1"><tr><th class="ps-3">Empresa</th><th>CNPJ</th><th>Regime</th><th>UF</th><th>Movimento</th><th>Credenciamento</th><th>Carteira</th><th>Situação</th></tr></thead>
+    <tbody id="corpoEmpresas">
+    {% for c in clientes %}
+      <tr data-t="{{ (c.empresa ~ ' ' ~ (c.cnpj or ''))|lower }}" data-c="{{ c.carteira.nome if c.carteira }}">
+        <td class="ps-3 fw-semibold"><a class="text-reset" href="{{ url_for('clientes.editar', cid=c.id) }}">{{ c.empresa }}</a></td>
+        <td>{{ c.cnpj or '—' }}</td><td>{{ c.tributacao or '—' }}</td><td>{{ c.uf or '—' }}</td>
+        <td>{% if c.movimento == 'SIM' %}<span class="pill">com mov.</span>{% elif c.movimento == 'NÃO' %}<span class="pill sem">sem mov.</span>{% else %}—{% endif %}</td>
+        <td>{{ c.credenciamento or '—' }}</td><td><span class="pill">{{ c.carteira.nome if c.carteira }}</span></td>
+        <td><span class="badge-sit sit-{{ c.situacao }}">{{ c.situacao|lower }}</span></td></tr>
+    {% endfor %}
+    </tbody></table></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function filtrar() { const q = norm(document.getElementById('busca')?.value || ''), c = document.getElementById('fCart')?.value || ''; let n = 0;
+  document.querySelectorAll('#corpoEmpresas tr').forEach(r => { const ok = (!q || norm(r.dataset.t).includes(q)) && (!c || r.dataset.c === c); r.hidden = !ok; n += ok; });
+  const el = document.getElementById('qtd'); if (el) el.textContent = n; }
+['busca', 'fCart'].forEach(id => document.getElementById(id)?.addEventListener('input', filtrar));
+</script>
+{% endblock %}

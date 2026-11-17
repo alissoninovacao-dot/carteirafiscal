@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titulo %}{{ c.empresa or 'Novo cliente' }}{% endblock %}
+{% macro campo(nome, rotulo, tipo='text', col=4) %}
+  <div class="col-md-{{ col }}"><label class="form-label">{{ rotulo }}</label>
+    <input class="form-control" type="{{ tipo }}" name="{{ nome }}" value="{{ (c[nome].isoformat() if c[nome] and tipo == 'date' else c[nome]) or '' }}"></div>
+{% endmacro %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>{{ c.empresa or 'Novo cliente' }}</h1><a class="small" href="{{ url_for('clientes.lista') }}"><i class="bi bi-arrow-left"></i> Voltar para clientes</a></div>
+  {% if c.id and not leitura %}<form method="post" action="{{ url_for('clientes.excluir', cid=c.id) }}" onsubmit="return confirm('Excluir este cliente definitivamente?')">
+    <button class="btn btn-outline-danger"><i class="bi bi-trash"></i> Excluir</button></form>{% endif %}
+</div>
+<form method="post" class="bloco">
+<fieldset {{ 'disabled' if leitura }} class="border-0 p-0 m-0">
+  <h2 class="fs-6 fw-bold mb-3">Identificação</h2>
+  <div class="row g-3 mb-4">
+    {{ campo('empresa', 'Empresa *', col=6) }}{{ campo('cnpj', 'CNPJ', col=3) }}
+    <div class="col-md-3"><label class="form-label">Situação</label>
+      <select class="form-select" name="situacao">{% for s in ['ATIVO','INATIVO'] %}<option {{ 'selected' if (c.situacao or 'ATIVO') == s }}>{{ s }}</option>{% endfor %}</select></div>
+    {{ campo('cpf', 'CPF', col=3) }}{{ campo('ie', 'Inscrição estadual (I.E)', col=3) }}{{ campo('im', 'Inscrição municipal (I.M)', col=3) }}{{ campo('nire', 'NIRE', col=3) }}
+    {{ campo('uf', 'UF', col=2) }}{{ campo('municipio', 'Município', col=4) }}{{ campo('inicio', 'Início', 'date', 3) }}
+    <div class="col-md-3"><label class="form-label">Movimento</label>
+      <select class="form-select" name="movimento"><option value=""></option>{% for s in ['SIM','NÃO'] %}<option {{ 'selected' if c.movimento == s }}>{{ s }}</option>{% endfor %}</select></div>
+  </div>
+
+  <h2 class="fs-6 fw-bold mb-3">Fiscal</h2>
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><label class="form-label">Responsável (da carteira)</label>
+      <input class="form-control" disabled value="{{ c.carteira.responsavel.nome if c.carteira and c.carteira.responsavel else '— defina na carteira —' }}"></div>
+    <div class="col-md-3"><label class="form-label">Carteira</label>
+      <select class="form-select" name="carteira_id"><option value="">— sem carteira —</option>
+        {% for k in carteiras %}<option value="{{ k.id }}" {{ 'selected' if c.carteira_id == k.id }}>{{ k.nome }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">Tributação</label>
+      <input class="form-control" name="tributacao" list="lt" value="{{ c.tributacao or '' }}"><datalist id="lt">{% for t in tribs %}<option value="{{ t }}">{% endfor %}</datalist></div>
+    {{ campo('credenciamento', 'Credenciamento', col=3) }}
+    <div class="col-md-3"><label class="form-label">ST detentores</label>
+      <select class="form-select" name="st_detentores"><option value=""></option>{% for s in ['SIM','NÃO'] %}<option {{ 'selected' if c.st_detentores == s }}>{{ s }}</option>{% endfor %}</select></div>
+    {{ campo('contabil', 'Contábil', col=3) }}{{ campo('dp', 'DP', col=3) }}{{ campo('telefone', 'Telefone', col=3) }}
+  </div>
+
+  <h2 class="fs-6 fw-bold mb-3">Contatos</h2>
+  <div class="row g-3 mb-4">
+    {{ campo('email', 'E-mail', col=6) }}{{ campo('email_fiscal', 'E-mail (fiscal)', col=6) }}
+    {{ campo('email_contabil', 'E-mail (contábil)', col=6) }}{{ campo('email_dp', 'E-mail (DP)', col=6) }}
+    <div class="col-12"><label class="form-label">Observações</label><textarea class="form-control" name="observacoes" rows="3">{{ c.observacoes or '' }}</textarea></div>
+  </div>
+  </fieldset>
+  {% if leitura %}<a class="btn btn-outline-secondary" href="{{ url_for('clientes.lista') }}"><i class="bi bi-arrow-left"></i> Voltar</a>
+  {% else %}<div class="d-flex gap-2"><button class="btn btn-primary px-4">Salvar</button><a class="btn btn-outline-secondary" href="{{ url_for('clientes.lista') }}">Cancelar</a></div>{% endif %}
+</form>
+
+{% if c.id %}
+<div class="bloco mt-3" id="blocoObrig">
+  <div class="bloco-cabecalho"><h2><i class="bi bi-list-check"></i> Obrigações acessórias desta empresa</h2>
+    <span class="small text-muted">Definem quais entregas são geradas todo mês/ano para este cliente</span></div>
+  <div class="small text-muted mb-2">A regra automática considera o <b>regime</b> ({{ c.tributacao or 'não informado' }}), a <b>inscrição estadual</b> ({{ 'informada' if c.ie else 'não informada' }}) e a <b>atividade</b> ({{ c.credenciamento or 'não informada' }}). {% if not leitura %}Marque ou desmarque para ajustar este cliente; "voltar ao automático" desfaz o ajuste.{% endif %}</div>
+  <div class="table-responsive"><table class="table tabela align-middle mb-0"><thead><tr><th style="width:60px">Possui</th><th>Obrigação</th><th>Periodicidade / vencimento</th><th>Por quê</th><th></th></tr></thead><tbody id="obrigCorpo"></tbody></table></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if c.id %}
+<script>
+const CID = {{ c.id }}, LEITURA = {{ leitura|tojson }};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+function desenharObrig(lista) {
+  document.getElementById('obrigCorpo').innerHTML = lista.map(o => `<tr data-id="${o.tipo_id}">
+    <td><div class="form-check form-switch"><input class="form-check-input ob-chk" type="checkbox" ${LEITURA ? 'disabled' : ''} ${o.efetivo ? 'checked' : ''}></div></td>
+    <td><span class="etipo" style="--c:${o.cor}">${esc(o.nome)}</span>${o.geracao === 'manual' ? ' <span class="pill sem" title="Condicional: não é gerada automaticamente">condicional</span>' : ''}
+      <div class="small text-muted mt-1">${esc(o.descricao)}</div></td>
+    <td class="small">${o.periodicidade === 'anual' ? 'Anual' : 'Mensal'}<div class="text-muted">${esc(o.vencimento)}</div></td>
+    <td class="small">${o.ajuste === null ? '' : '<span class="pill">ajustado manualmente</span> '}${esc(o.motivo)}</td>
+    <td class="text-end">${o.ajuste === null || LEITURA ? '' : '<button type="button" class="btn btn-sm btn-link ob-reset">voltar ao automático</button>'}</td></tr>`).join('');
+}
+async function chamar(tid, aplica) {
+  const r = await fetch(`/api/clientes/${CID}/obrigacoes/${tid}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({aplica})});
+  desenharObrig(await r.json());
+}
+document.getElementById('obrigCorpo').addEventListener('change', e => { const c = e.target.closest('.ob-chk'); if (c) chamar(c.closest('tr').dataset.id, c.checked); });
+document.getElementById('obrigCorpo').addEventListener('click', e => { const b = e.target.closest('.ob-reset'); if (b) chamar(b.closest('tr').dataset.id, null); });
+fetch(`/api/clientes/${CID}/obrigacoes`).then(r => r.json()).then(desenharObrig);
+</script>
+{% endif %}
+{% endblock %}

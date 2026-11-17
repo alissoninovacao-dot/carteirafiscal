@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Controle de demandas' if gestor else 'Minhas demandas' }}{% endblock %}
+{% macro badge_status(d) %}<span class="di-badge" style="--c:{{ d.status_cor }}"><i class="bi {{ STATUS_ICONE[d.status] }}"></i> {{ d.status_label }}</span>{% endmacro %}
+{% macro badge_prio(d) %}<span class="di-badge" style="--c:{{ d.prioridade_cor }}">{{ d.prioridade_label }}</span>{% endmacro %}
+{% macro badge_prazo(d) %}
+  {% set s = d.situacao_prazo() %}
+  {% if s == 'atrasada' %}<span class="di-badge" style="--c:#dc2626"><i class="bi bi-exclamation-triangle-fill"></i> {{ -d.dias_para_prazo }}d em atraso</span>
+  {% elif s == 'hoje' %}<span class="di-badge" style="--c:#ea580c">vence hoje</span>
+  {% elif s == 'proxima' %}<span class="di-badge" style="--c:#ca8a04">em {{ d.dias_para_prazo }}d</span>
+  {% elif s == 'concluida_atrasada' %}<span class="di-badge" style="--c:#ca8a04">concluída com atraso</span>{% endif %}
+{% endmacro %}
+{% macro pessoas_av(d, n=4) %}
+  <span class="d-inline-flex align-items-center">
+    {% for p in d.responsaveis[:n] %}<span class="avatar av-sobre" style="--av:{{ p.cor }}; width:24px; height:24px; font-size:.58rem" title="{{ p.nome }}">{{ p.iniciais }}</span>{% endfor %}
+    {% if d.responsaveis|length > n %}<span class="small text-muted ms-1">+{{ d.responsaveis|length - n }}</span>{% endif %}
+  </span>
+{% endmacro %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>{{ 'Controle de demandas' if gestor else 'Minhas demandas' }}</h1>
+    <div class="text-muted">{% if gestor %}Crie demandas e atribua à equipe. Acompanhe o andamento de cada uma.{% else %}As demandas atribuídas a você ou à sua equipe.{% endif %}</div></div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if gestor %}<a class="btn btn-outline-secondary" href="{{ url_for('internas.exportar', **filtros) }}"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar CSV</a>
+    <a class="btn btn-laranja" href="{{ url_for('internas.nova') }}"><i class="bi bi-plus-lg"></i> Nova demanda</a>{% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><a class="bloco kpi text-reset" href="{{ url_for('internas.lista') }}"><div class="kpi-icone"><i class="bi bi-hourglass-split"></i></div><div><div class="kpi-valor">{{ resumo.abertas }}</div><div class="kpi-rotulo">Em aberto</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="bloco kpi text-reset" href="{{ url_for('internas.lista', prazo='atrasadas') }}"><div class="kpi-icone {{ 'vermelho' if resumo.atrasadas else 'cinza' }}"><i class="bi bi-exclamation-triangle"></i></div><div><div class="kpi-valor">{{ resumo.atrasadas }}</div><div class="kpi-rotulo">Atrasadas</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="bloco kpi text-reset" href="{{ url_for('internas.lista', situacao='validar') }}"><div class="kpi-icone laranja"><i class="bi bi-flag"></i></div><div><div class="kpi-valor">{{ resumo.validar }}</div><div class="kpi-rotulo">{{ 'Aguardando sua confirmação' if gestor else 'Aguardando confirmação' }}</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="bloco kpi text-reset" href="{{ url_for('internas.lista', status='concluido') }}"><div class="kpi-icone verde"><i class="bi bi-check2-square"></i></div><div><div class="kpi-valor">{{ resumo.concluidas }}</div><div class="kpi-rotulo">Concluídas</div></div></a></div>
+</div>
+
+<form method="get" class="bloco mb-3">
+  <input type="hidden" name="visao" value="{{ visao }}">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-lg-3"><label class="form-label">Pesquisar</label><input type="search" name="q" class="form-control form-control-sm" value="{{ filtros.get('q', '') }}" placeholder="Título, código, etiqueta…"></div>
+    <div class="col-6 col-lg-2"><label class="form-label">Status</label><select name="status" class="form-select form-select-sm"><option value="">Todos</option>{% for k, v in STATUS %}<option value="{{ k }}" {{ 'selected' if filtros.get('status') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-lg-2"><label class="form-label">Prioridade</label><select name="prioridade" class="form-select form-select-sm"><option value="">Todas</option>{% for k, v in PRIORIDADES %}<option value="{{ k }}" {{ 'selected' if filtros.get('prioridade') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    {% if gestor %}
+    <div class="col-6 col-lg-2"><label class="form-label">Equipe</label><select name="equipe" class="form-select form-select-sm"><option value="">Todas</option>{% for t in equipes %}<option value="{{ t.id }}" {{ 'selected' if filtros.get('equipe') == t.id|string }}>{{ t.nome }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-lg-2"><label class="form-label">Colaborador</label><select name="pessoa" class="form-select form-select-sm"><option value="">Todos</option>{% for p in pessoas %}<option value="{{ p.id }}" {{ 'selected' if filtros.get('pessoa') == p.id|string }}>{{ p.nome }}</option>{% endfor %}</select></div>
+    {% endif %}
+    <div class="col-6 col-lg-2"><label class="form-label">Prazo</label><select name="prazo" class="form-select form-select-sm"><option value="">Qualquer</option>
+      {% for k, v in [('atrasadas', 'Atrasadas'), ('hoje', 'Vencem hoje'), ('semana', 'Próximos 7 dias'), ('sem_prazo', 'Sem prazo')] %}<option value="{{ k }}" {{ 'selected' if filtros.get('prazo') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-lg-2"><label class="form-label">Situação</label><select name="situacao" class="form-select form-select-sm"><option value="">Qualquer</option>
+      {% for k, v in [('impedidas', 'Impedidas'), ('validar', 'Aguardando confirmação')] %}<option value="{{ k }}" {{ 'selected' if filtros.get('situacao') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    {% if gestor %}<div class="col-6 col-lg-2"><label class="form-label">Arquivo</label><select name="arquivadas" class="form-select form-select-sm"><option value="">Ativas</option><option value="so" {{ 'selected' if filtros.get('arquivadas') == 'so' }}>Arquivadas</option></select></div>{% endif %}
+    <div class="col-12 col-lg d-flex gap-2 align-items-end">
+      <button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filtrar</button>
+      {% if filtros %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('internas.lista', visao=visao) }}">Limpar</a>{% endif %}
+      <div class="btn-group btn-group-sm ms-auto" role="group">
+        <a class="btn {{ 'btn-primary' if visao != 'quadro' else 'btn-outline-secondary' }}" href="{{ url_for('internas.lista', visao='lista', ordem=ordem, **filtros) }}"><i class="bi bi-list-ul"></i> Lista</a>
+        <a class="btn {{ 'btn-primary' if visao == 'quadro' else 'btn-outline-secondary' }}" href="{{ url_for('internas.lista', visao='quadro', ordem=ordem, **filtros) }}"><i class="bi bi-kanban"></i> Quadro</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if visao == 'quadro' %}
+<div class="di-quadro">
+  {% for k, v in STATUS %}
+  <div class="di-coluna" style="--c:{{ {'a_iniciar': '#64748b', 'em_andamento': '#2563eb', 'concluido': '#16a34a'}[k] }}">
+    <div class="di-coluna-cab"><span><i class="bi {{ STATUS_ICONE[k] }}"></i> {{ v }}</span><span class="pill">{{ itens|selectattr('status', 'equalto', k)|list|length }}</span></div>
+    {% for d in itens if d.status == k %}
+    <a class="di-cartao {{ 'atrasada' if d.atrasada }}" href="{{ url_for('internas.detalhe', did=d.id) }}" style="--p:{{ d.prioridade_cor }}">
+      <div class="d-flex justify-content-between align-items-center"><span class="di-codigo">{{ d.codigo }}</span>{{ badge_prio(d) }}</div>
+      <div class="fw-semibold my-1">{{ d.titulo }}</div>
+      <div class="d-flex flex-wrap gap-1 mb-1">{% for t in d.equipes %}<span class="pill" style="background:color-mix(in srgb, {{ t.cor }} 18%, #fff)">{{ t.nome }}</span>{% endfor %}{% for t in d.etiquetas %}<span class="pill sem">{{ t.nome }}</span>{% endfor %}
+        {% if d.impedimento %}<span class="di-badge" style="--c:#dc2626"><i class="bi bi-exclamation-octagon-fill"></i> impedida</span>{% endif %}
+        {% if d.aguardando_validacao %}<span class="di-badge" style="--c:#ea580c"><i class="bi bi-flag-fill"></i> a confirmar</span>{% endif %}</div>
+      <div class="d-flex justify-content-between align-items-center">{{ pessoas_av(d) }}
+        <span class="small text-muted">{% if d.prazo %}{{ d.prazo.strftime('%d/%m') }}{% endif %} {{ badge_prazo(d) }}</span></div>
+      {% if d.checklist %}<div class="progress mt-2" style="height:5px"><div class="progress-bar bg-success" style="width:{{ d.progresso }}%"></div></div>{% endif %}
+    </a>
+    {% else %}<div class="text-muted small text-center py-3">Nada aqui.</div>{% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bloco p-0 overflow-hidden">
+  <div class="table-responsive"><table class="table table-hover tabela align-middle mb-0">
+    <thead><tr>
+      {% macro th(chave, rotulo) %}<th><a href="{{ url_for('internas.lista', ordem=chave, visao='lista', **filtros) }}" class="{{ 'fw-bold text-body' if ordem == chave }}">{{ rotulo }}{% if ordem == chave %} <i class="bi bi-caret-down-fill small"></i>{% endif %}</a></th>{% endmacro %}
+      <th class="ps-3">Código</th>{{ th('titulo', 'Demanda') }}<th>Status</th>{{ th('prioridade', 'Prioridade') }}<th>Atribuída a</th>{{ th('prazo', 'Prazo') }}{{ th('atualizacao', 'Atualização') }}
+    </tr></thead>
+    <tbody>
+    {% for d in itens %}
+      <tr class="{{ 'linha-atrasada' if d.atrasada }}" style="cursor:pointer" onclick="if(!event.target.closest('a')) location.href='{{ url_for('internas.detalhe', did=d.id) }}'">
+        <td class="ps-3 text-nowrap"><span class="di-codigo">{{ d.codigo }}</span></td>
+        <td style="min-width:260px"><a class="fw-semibold text-body" href="{{ url_for('internas.detalhe', did=d.id) }}">{{ d.titulo }}</a>
+          <div class="d-flex flex-wrap gap-1 mt-1">{% for t in d.etiquetas %}<span class="pill sem">{{ t.nome }}</span>{% endfor %}
+            {% if d.impedimento %}<span class="di-badge" style="--c:#dc2626"><i class="bi bi-exclamation-octagon-fill"></i> impedida</span>{% endif %}
+            {% if d.aguardando_validacao %}<span class="di-badge" style="--c:#ea580c"><i class="bi bi-flag-fill"></i> aguardando confirmação</span>{% endif %}
+            {% if d.checklist %}<span class="small text-muted"><i class="bi bi-check2-square"></i> {{ d.checklist_feitos }}/{{ d.checklist_total }}</span>{% endif %}</div></td>
+        <td>{{ badge_status(d) }}</td><td>{{ badge_prio(d) }}</td>
+        <td>{% for t in d.equipes %}<span class="pill" style="background:color-mix(in srgb, {{ t.cor }} 18%, #fff)">{{ t.nome }}</span> {% endfor %}{{ pessoas_av(d) }}</td>
+        <td class="text-nowrap">{% if d.prazo %}<div class="small">{{ d.prazo.strftime('%d/%m/%Y') }}</div>{{ badge_prazo(d) }}{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+        <td class="small text-muted text-nowrap">{{ d.atualizado_em.strftime('%d/%m %H:%M') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="text-center text-muted py-5"><i class="bi bi-inbox fs-2 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+</div>
+{% endif %}
+{% endblock %}

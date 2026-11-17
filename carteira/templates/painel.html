@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block titulo %}Painel{% endblock %}
+{% macro kpi(icone, valor, rotulo, link, classe='', extra='') %}
+  <a class="bloco kpi text-reset" href="{{ link }}"><div class="kpi-icone {{ classe }}"><i class="bi bi-{{ icone }}"></i></div>
+    <div><div class="kpi-valor"><span data-conta="{{ valor }}">{{ valor }}</span>{{ extra|safe }}</div><div class="kpi-rotulo">{{ rotulo }}</div></div></a>
+{% endmacro %}
+{% macro barras(titulo, itens, base, param) %}
+  <div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2>{{ titulo }}</h2></div>
+    {% for nome, n, chave in itens %}
+      <a class="d-block mb-2 text-reset" href="{{ url_for('clientes.lista', situacao='ATIVO', **({param: chave} if chave is not none and param else {})) }}">
+        <div class="d-flex justify-content-between small fw-semibold"><span>{{ nome }}</span><span data-conta="{{ n }}">{{ n }}</span></div>
+        <div class="progress" style="height:8px"><div class="progress-bar" style="width: {{ (n / base * 100) if base else 0 }}%"></div></div></a>
+    {% else %}<div class="text-muted small">Sem dados.</div>{% endfor %}
+  </div>
+{% endmacro %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Painel da Coordenação Fiscal</h1><div class="text-muted">Gestão das entregas do setor e visão geral da carteira fiscal da ContabilizaPharma</div></div>
+  <form method="get" class="d-flex align-items-end gap-2"><div><label class="form-label mb-0 small">Competência</label>
+    <input type="month" class="form-control form-control-sm" name="competencia" value="{{ g.comp }}" onchange="this.form.submit()"></div></form>
+</div>
+
+{% set E = url_for('entregas.pagina', competencia=g.comp) %}
+<div class="bloco mb-3">
+  <div class="bloco-cabecalho"><h2><i class="bi bi-speedometer2"></i> Gestão das entregas · {{ g.comp[5:] }}/{{ g.comp[:4] }}</h2>
+    <a class="btn btn-sm btn-outline-primary" href="{{ E }}">Abrir entregas</a></div>
+  {% if g.t.total %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">{{ kpi('check2-square', g.t.ok, 'Concluídas · ' ~ g.t.pct ~ '%', E, 'verde', ' <small class="fs-6 text-muted fw-semibold">de ' ~ g.t.total ~ '</small>') }}</div>
+    <div class="col-6 col-lg-3">{{ kpi('exclamation-triangle', g.t.atras, 'Atrasadas', E, 'vermelho' if g.t.atras else 'cinza') }}</div>
+    <div class="col-6 col-lg-3">{{ kpi('clock', g.t.prox, 'Vencem em até 3 dias', E, 'laranja', ' <small class="fs-6 text-muted fw-semibold">· ' ~ g.t.hoje ~ ' hoje</small>') }}</div>
+    <div class="col-6 col-lg-3">{{ kpi('hourglass-split', g.t.total - g.t.ok, 'Em aberto', E, '', ' <small class="fs-6 text-muted fw-semibold">· ' ~ g.t.sem_resp ~ ' sem resp. · ' ~ g.t.sem_venc ~ ' sem data</small>') }}</div>
+  </div>
+  <div class="mb-3"><div class="progress" style="height:12px">
+    {% for k, nome, cor in g.status %}{% set n = g.por_status.get(k, 0) %}<div class="progress-bar" title="{{ nome }}: {{ n }}" style="width: {{ n / g.t.total * 100 }}%; background: {{ cor }}"></div>{% endfor %}</div>
+    <div class="d-flex flex-wrap gap-3 small mt-2">{% for k, nome, cor in g.status %}<a class="text-reset" href="{{ url_for('entregas.pagina', competencia=g.comp, status=k) }}"><span class="ponto me-1" style="--c:{{ cor }}"></span>{{ nome }} <b>{{ g.por_status.get(k, 0) }}</b></a>{% endfor %}</div></div>
+  <div class="row g-3">
+    <div class="col-lg-4"><div class="ind-tit">Por obrigação</div>
+      {% for o in g.por_tipo %}<a class="d-block mb-2 text-reset" href="{{ url_for('entregas.pagina', competencia=g.comp, tipos=o.id) }}">
+        <div class="d-flex justify-content-between small fw-semibold"><span><span class="ponto me-1" style="--c:{{ o.cor }}"></span>{{ o.nome }}</span><span>{{ o.ok }}/{{ o.total }}{% if o.atras %} <span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> {{ o.atras }}</span>{% endif %}</span></div>
+        <div class="progress" style="height:7px"><div class="progress-bar bg-success" style="width: {{ o.ok / o.total * 100 }}%"></div></div></a>{% endfor %}</div>
+    <div class="col-lg-4"><div class="ind-tit">Por colaborador (carteira)</div>
+      {% for p in g.por_pessoa %}<a class="d-block mb-2 text-reset" href="{{ url_for('entregas.pagina', competencia=g.comp, responsavel=p.id) }}">
+        <div class="d-flex justify-content-between small fw-semibold"><span><span class="ponto me-1" style="--c:{{ p.cor }}"></span>{{ p.nome }}</span><span>{{ p.ok }}/{{ p.total }}{% if p.atras %} <span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> {{ p.atras }}</span>{% endif %}</span></div>
+        <div class="progress" style="height:7px"><div class="progress-bar bg-success" style="width: {{ p.ok / p.total * 100 }}%"></div></div></a>{% endfor %}</div>
+    <div class="col-lg-4"><div class="ind-tit">Mais atrasadas</div>
+      {% for e in g.criticas %}<a class="d-flex justify-content-between align-items-center gap-2 py-1 text-reset border-bottom" href="{{ url_for('entregas.pagina', competencia=g.comp, q=e.cliente) }}">
+        <span class="small"><b>{{ e.cliente }}</b><br><span class="etipo" style="--c:{{ e.cor }}">{{ e.tipo }}</span> <span class="text-muted">· {{ e.resp }}</span></span>
+        <span class="evenc atrasada">{{ e.dias }}d</span></a>
+      {% else %}<div class="text-muted small">Nenhuma entrega atrasada. 🎉</div>{% endfor %}</div>
+  </div>
+  {% else %}<div class="text-muted">Nenhuma entrega gerada para esta competência. <a href="{{ E }}">Gere as entregas do período</a>.</div>{% endif %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-4">{{ kpi('buildings', total, 'Empresas cadastradas (todas)', url_for('clientes.lista')) }}</div>
+  <div class="col-6 col-lg-4">{{ kpi('check-circle', n_ativos, 'Empresas ativas', url_for('clientes.lista', situacao='ATIVO'), 'verde') }}</div>
+  <div class="col-6 col-lg-4">{{ kpi('slash-circle', n_inativos, 'Empresas inativas', url_for('clientes.lista', situacao='INATIVO'), 'cinza') }}</div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3">{{ kpi('inbox', sem_carteira, 'Ativas sem carteira', url_for('clientes.lista', situacao='ATIVO', carteira=0), 'laranja') }}</div>
+  <div class="col-6 col-lg-3">{{ kpi('briefcase', carteiras|length, 'Carteiras', url_for('carteiras.lista')) }}</div>
+  <div class="col-6 col-lg-3">{{ kpi('people', n_pessoas, 'Pessoas na equipe', url_for('equipe.pagina'), '', ' <small class="fs-6 text-muted fw-semibold">· <span data-conta="' ~ n_times ~ '">' ~ n_times ~ '</span> equipes</small>') }}</div>
+  <div class="col-6 col-lg-3">{{ kpi('arrow-left-right', com_movimento, 'Ativas com movimento', url_for('clientes.lista', situacao='ATIVO'), '', ' <small class="fs-6 text-muted fw-semibold">· <span data-conta="' ~ sem_movimento ~ '">' ~ sem_movimento ~ '</span> sem</small>') }}</div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">{{ barras('Ativas por tributação', trib, n_ativos, 'tributacao') }}</div>
+  <div class="col-lg-4"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2>Ativas por equipe</h2>
+      <span class="small text-muted"><span class="ponto" style="--c:#16a34a"></span> com mov. <span class="ponto ms-1" style="--c:#cbd5e1"></span> sem mov.</span></div>
+    {% for a in por_equipe %}
+      <a class="d-block mb-3 text-reset" href="{{ url_for('clientes.lista', situacao='ATIVO', carteira_do_coord=1) if a.id is none else url_for('clientes.lista', situacao='ATIVO', equipe=a.id) }}">
+        <div class="d-flex justify-content-between small fw-semibold"><span>{{ a.nome }}{% if a.formato %} <small class="text-muted fw-semibold">· {{ a.formato }}</small>{% endif %}</span><span data-conta="{{ a.total }}">{{ a.total }}</span></div>
+        <div class="progress" style="height:8px"><div class="progress-bar bg-success" style="width: {{ (a.com / a.total * 100) if a.total else 0 }}%"></div>
+          <div class="progress-bar" style="width: {{ (a.sem / a.total * 100) if a.total else 0 }}%; background:#cbd5e1"></div></div>
+        {% if a.membros %}<div class="fw-bold text-primary lh-sm mt-1" style="font-size:1.02rem">{{ a.membros|join(" · ") }}</div>{% endif %}
+        <div class="small text-muted mt-1"><b class="text-success" data-conta="{{ a.com }}">{{ a.com }}</b> com movimento · <b data-conta="{{ a.sem }}">{{ a.sem }}</b> sem movimento{% if a.nd %} · {{ a.nd }} não informado{% endif %}</div></a>
+    {% endfor %}
+  </div></div>
+  <div class="col-lg-4">{{ barras('Ativas por UF', ufs, n_ativos, 'uf') }}</div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-4">{{ barras('Ativas por credenciamento', cred, n_ativos, 'credenciamento') }}</div>
+  <div class="col-lg-8"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2>Carteiras</h2><a class="btn btn-sm btn-outline-primary" href="{{ url_for('carteiras.lista') }}">Gerenciar</a></div>
+    {% for c in carteiras %}
+      <a class="d-flex align-items-center gap-2 py-2 border-bottom text-reset" href="{{ url_for('carteiras.detalhe', cid=c.id) }}">
+        <span class="ponto" style="--c: {{ c.cor }}"></span><strong class="flex-grow-1">{{ c.nome }}</strong>
+        <span class="small text-muted">{{ c.responsavel.nome if c.responsavel else 'sem responsável' }}</span><span class="pill">{{ c.total_clientes }} clientes</span></a>
+    {% else %}
+      <div class="text-muted py-3">Nenhuma carteira ainda. <a href="{{ url_for('carteiras.lista') }}">Crie a primeira</a>.</div>
+    {% endfor %}
+  </div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+/* Animação de entrada: números contando e barras enchendo */
+(function () {
+  const DUR = 1100, reduz = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduz) return;
+  const suave = t => 1 - Math.pow(1 - t, 3);
+  const nums = [...document.querySelectorAll('[data-conta]')];
+  nums.forEach(el => el.textContent = '0');
+  const barras = [...document.querySelectorAll('.progress-bar')];
+  barras.forEach(b => { b.dataset.w = b.style.width; b.style.transition = 'none'; b.style.width = '0'; });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    barras.forEach(b => { b.style.transition = `width ${DUR}ms cubic-bezier(.22,.8,.3,1)`; b.style.width = b.dataset.w; });
+    const t0 = performance.now();
+    (function passo(agora) {
+      const p = Math.min((agora - t0) / DUR, 1);
+      nums.forEach(el => el.textContent = Math.round(+el.dataset.conta * suave(p)).toLocaleString('pt-BR'));
+      if (p < 1) requestAnimationFrame(passo);
+    })(t0);
+  }));
+})();
+</script>
+{% endblock %}

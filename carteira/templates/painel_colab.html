@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block titulo %}Painel{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Olá, {{ u.nome }}!</h1>
+    <div class="text-muted">{% if equipe %}{{ equipe.nome }} ({{ equipe.formato|lower }}){% endif %}{% if carteiras %}{{ ' · ' if equipe }}{{ carteiras|map(attribute='nome')|join(', ') }}{% else %}Você ainda não tem carteira atribuída{% endif %}</div></div>
+  <form method="get" class="d-flex align-items-end gap-2"><div><label class="form-label mb-0 small">Competência</label>
+    <input type="month" class="form-control form-control-sm" name="competencia" value="{{ comp }}" onchange="this.form.submit()"></div></form>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><a class="bloco kpi text-reset" href="{{ url_for('carteiras.minha') }}"><div class="kpi-icone verde"><i class="bi bi-buildings"></i></div><div><div class="kpi-valor">{{ r.total }}</div><div class="kpi-rotulo">Empresas ativas{% if r.inativas %} · {{ r.inativas }} inativas{% endif %}</div></div></a></div>
+  <div class="col-6 col-lg-3"><div class="bloco kpi"><div class="kpi-icone"><i class="bi bi-activity"></i></div><div><div class="kpi-valor">{{ r.com }}<small class="fs-6 text-muted fw-semibold"> com mov.</small></div><div class="kpi-rotulo">{{ r.sem }} sem movimento</div></div></div></div>
+  <div class="col-6 col-lg-3"><a class="bloco kpi text-reset" href="{{ url_for('entregas.pagina', competencia=comp) }}"><div class="kpi-icone laranja"><i class="bi bi-check2-square"></i></div><div><div class="kpi-valor">{{ ok }}<small class="fs-6 text-muted fw-semibold"> de {{ total }}</small></div><div class="kpi-rotulo">Entregas concluídas ({{ (ok / total * 100)|round|int if total else 0 }}%)</div></div></a></div>
+  <div class="col-6 col-lg-3"><div class="bloco kpi"><div class="kpi-icone {{ 'vermelho' if atras else 'cinza' }}"><i class="bi bi-exclamation-triangle"></i></div><div><div class="kpi-valor">{{ atras }}</div><div class="kpi-rotulo">Atrasadas · {{ prox }} vencem em até 3 dias</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-5"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2><i class="bi bi-kanban"></i> Status das entregas</h2></div>
+    {% for k, nome, cor in status %}{% set n = por_status.get(k, 0) %}
+      <div class="mb-2"><div class="d-flex justify-content-between small fw-semibold"><span><span class="ponto me-1" style="--c:{{ cor }}"></span>{{ nome }}</span><span>{{ n }}</span></div>
+        <div class="progress" style="height:8px"><div class="progress-bar" style="width:{{ (n / total * 100) if total else 0 }}%;background:{{ cor }}"></div></div></div>
+    {% endfor %}
+    {% if not total %}<div class="text-muted small">Nenhuma entrega gerada para esta competência ainda.</div>{% endif %}
+  </div></div>
+  <div class="col-lg-7"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2><i class="bi bi-list-check"></i> Por obrigação</h2></div>
+    {% for g in por_tipo %}
+      <div class="mb-2"><div class="d-flex justify-content-between small fw-semibold"><span><span class="ponto me-1" style="--c:{{ g.cor }}"></span>{{ g.nome }}</span>
+        <span>{{ g.ok }}/{{ g.total }}{% if g.atras %} <span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> {{ g.atras }}</span>{% endif %}</span></div>
+        <div class="progress" style="height:8px"><div class="progress-bar bg-success" style="width:{{ g.ok / g.total * 100 }}%"></div></div></div>
+    {% else %}<div class="text-muted small">Sem entregas nesta competência.</div>{% endfor %}
+  </div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-5"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2><i class="bi bi-calendar-event"></i> Próximos vencimentos</h2><a class="small" href="{{ url_for('entregas.calendario') }}">calendário</a></div>
+    {% for e in proximas %}
+      <a class="d-flex justify-content-between align-items-center gap-2 py-1 text-reset border-bottom" href="{{ url_for('clientes.editar', cid=e.cid) }}">
+        <span class="small"><b>{{ e.cliente }}</b><br><span class="etipo" style="--c:{{ e.cor }}">{{ e.tipo }}</span></span>
+        <span class="evenc {{ 'atrasada' if e.atrasada }}">{{ e.venc.strftime('%d/%m') if e.venc else 'sem data' }}{{ ' · atrasada' if e.atrasada }}</span></a>
+    {% else %}<div class="text-muted small">Nada pendente. 🎉</div>{% endfor %}
+  </div></div>
+  <div class="col-lg-7"><div class="bloco h-100">
+    <div class="bloco-cabecalho"><h2><i class="bi bi-pie-chart"></i> Regimes das suas empresas</h2></div>
+    {% for nome, n in r.detalhes.tributacao %}
+      <div class="mb-2"><div class="d-flex justify-content-between small fw-semibold"><span>{{ nome }}</span><span>{{ n }}</span></div>
+        <div class="progress" style="height:8px"><div class="progress-bar" style="width:{{ (n / r.total * 100) if r.total else 0 }}%"></div></div></div>
+    {% else %}<div class="text-muted small">Sem empresas.</div>{% endfor %}
+  </div></div>
+</div>
+
+<div class="bloco p-0 overflow-hidden">
+  <div class="bloco-cabecalho p-3 pb-0"><h2><i class="bi bi-buildings"></i> Suas empresas <span class="pill">{{ empresas|length }}</span></h2>
+    <input class="form-control form-control-sm" style="max-width:280px" id="busca" type="search" placeholder="Buscar empresa ou CNPJ…" autocomplete="off"></div>
+  <div class="table-responsive" style="max-height:60vh"><table class="table table-hover tabela align-middle mb-0">
+    <thead style="position:sticky;top:0;background:#fff;z-index:1"><tr><th class="ps-3">Empresa</th><th>CNPJ</th><th>Regime</th><th>Movimento</th><th>Carteira</th><th>Entregas ({{ comp[5:] }}/{{ comp[:4] }})</th></tr></thead>
+    <tbody id="corpoEmpresas">
+    {% for c in empresas %}
+      <tr data-t="{{ (c.empresa ~ ' ' ~ c.cnpj)|lower }}" class="{{ 'text-muted' if c.sit != 'ATIVO' }}">
+        <td class="ps-3 fw-semibold"><a class="text-reset" href="{{ url_for('clientes.editar', cid=c.id) }}">{{ c.empresa }}</a>{% if c.sit != 'ATIVO' %} <span class="badge-sit sit-INATIVO">inativa</span>{% endif %}</td>
+        <td>{{ c.cnpj or '—' }}</td><td>{{ c.trib or '—' }}</td>
+        <td>{% if c.mov == 'SIM' %}<span class="pill">com mov.</span>{% elif c.mov == 'NÃO' %}<span class="pill sem">sem mov.</span>{% else %}—{% endif %}</td>
+        <td><span class="pill">{{ c.carteira }}</span></td>
+        <td>{% if c.total %}<span class="pill {{ '' if c.ok == c.total else 'sem' }}">{{ c.ok }}/{{ c.total }}</span>{% if c.atras %} <span class="text-danger small fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> {{ c.atras }} atrasada(s)</span>{% endif %}{% else %}<span class="text-muted small">—</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="text-center text-muted py-4">Nenhuma empresa na sua carteira.</td></tr>{% endfor %}
+    </tbody></table></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+document.getElementById('busca').addEventListener('input', e => { const q = norm(e.target.value);
+  document.querySelectorAll('#corpoEmpresas tr[data-t]').forEach(r => r.hidden = q && !norm(r.dataset.t).includes(q)); });
+</script>
+{% endblock %}

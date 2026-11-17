@@ -1,0 +1,564 @@
+{% extends "base.html" %}
+{% block titulo %}Equipe{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Equipe fiscal</h1><div class="text-muted">{% if leitura %}Organograma da equipe fiscal. A sua equipe aparece em destaque.{% else %}Arraste as pessoas para dentro de uma equipe (dupla, trio, quarteto…) e posicione as equipes abaixo do coordenador.{% endif %}</div></div>
+  <div class="d-flex gap-2 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Zoom">
+      <button class="btn btn-outline-secondary" id="zMenos" title="Diminuir zoom (Ctrl + roda do mouse)"><i class="bi bi-zoom-out"></i></button>
+      <button class="btn btn-outline-secondary" id="zRotulo" style="min-width:68px" title="Voltar para 100%">100%</button>
+      <button class="btn btn-outline-secondary" id="zMais" title="Aumentar zoom"><i class="bi bi-zoom-in"></i></button>
+      <button class="btn btn-outline-secondary" id="zAjustar" title="Ajustar tudo na tela"><i class="bi bi-arrows-fullscreen"></i> Ajustar à tela</button>
+    </div>
+    <button class="btn btn-outline-secondary" id="btnIndicadores" {{ 'hidden' if leitura }}><i class="bi bi-bar-chart-line"></i> <span>Expandir indicadores</span></button>
+    <button class="btn btn-outline-primary" id="btnOrganizar" {{ 'hidden' if leitura }}><i class="bi bi-magic"></i> Reorganizar automaticamente</button>
+    <button class="btn btn-laranja" id="btnNovaEquipe" {{ 'hidden' if leitura }}><i class="bi bi-plus-lg"></i> Nova equipe</button>
+  </div>
+</div>
+
+<div class="equipe-layout {{ 'leitura' if leitura }}">
+  <aside class="bandeja bloco" {{ 'hidden' if leitura }}>
+    <div class="bloco-cabecalho"><h2><i class="bi bi-people"></i> Usuários</h2>
+      <button class="btn btn-sm btn-primary" id="btnNovaPessoa"><i class="bi bi-person-plus"></i> Novo</button></div>
+    <div class="small text-muted mb-2">Arraste uma pessoa para um bloco: ela pode estar em vários ao mesmo tempo. Clique com o botão direito no boneco, dentro do bloco, para removê-la dali. Clique para editar.</div>
+    <div class="nav-titulo-lat">Coordenação</div>
+    <div class="d-flex flex-column gap-2 mb-3" id="listaCoord"></div>
+    <div class="nav-titulo-lat">Sem equipe</div>
+    <div class="bandeja-corpo" id="bandeja"></div>
+    <div id="listaTimes"></div>
+  </aside>
+  <div class="canvas {{ 'leitura' if leitura }}" id="canvas"><div id="sizer"><div class="palco" id="palco"><svg id="linhas"></svg></div></div></div>
+</div>
+
+<!-- Modal pessoa -->
+<div class="modal fade" id="modalPessoa" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="tituloPessoa">Usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body vstack gap-3">
+    <div id="pInfo"></div>
+    <div id="pEmpresas" class="bloco p-3" hidden>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="fs-6 fw-bold m-0"><i class="bi bi-buildings"></i> Empresas sob responsabilidade <span class="pill" id="peQtd">0</span></h2>
+        <button type="button" class="btn btn-link btn-sm p-0" id="peMarcar">marcar visíveis</button></div>
+      <input class="form-control form-control-sm mb-2" id="peBusca" type="search" placeholder="Buscar empresa ou CNPJ…" autocomplete="off">
+      <div class="painel-lista" id="peLista" style="max-height: 240px"></div>
+      <div class="d-flex gap-2 mt-2 align-items-center">
+        <button type="button" class="btn btn-sm btn-primary" id="peMover" disabled><i class="bi bi-arrow-left-right"></i> Mover selecionadas (<span id="peSel">0</span>)</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" id="peRemover" disabled title="A empresa fica sem carteira e sem responsável"><i class="bi bi-dash-circle"></i> Remover da carteira</button>
+        <span class="small text-muted d-none d-md-inline">mover para outra carteira/responsável, ou remover para definir depois</span></div>
+      <div class="small mt-2" id="peMsgTopo"></div>
+      <div id="peMovePainel" class="border rounded-3 p-3 mt-3 vstack gap-2" hidden>
+        <div class="btn-group w-100" role="group">
+          <input type="radio" class="btn-check" name="peTipo" id="peTipoCart" value="carteira" checked><label class="btn btn-outline-primary btn-sm" for="peTipoCart"><i class="bi bi-briefcase"></i> Para outra carteira</label>
+          <input type="radio" class="btn-check" name="peTipo" id="peTipoResp" value="resp"><label class="btn btn-outline-primary btn-sm" for="peTipoResp"><i class="bi bi-person-badge"></i> Para outro responsável</label></div>
+        <div id="peCart"><label class="form-label">Carteira de destino</label><select class="form-select form-select-sm" id="peCarteira"></select></div>
+        <div id="peResp" class="vstack gap-2" hidden>
+          <div><label class="form-label">Responsável de destino</label><select class="form-select form-select-sm" id="pePessoa"></select></div>
+          <div><label class="form-label">Carteira dele(a)</label><select class="form-select form-select-sm" id="peCartPessoa"></select>
+            <div class="form-text">Se a pessoa ainda não tem carteira, uma nova é criada para ela.</div></div></div>
+        <div class="d-flex gap-2 align-items-center"><button type="button" class="btn btn-sm btn-primary" id="peConfirmar">Confirmar movimentação</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="peCancelar">Cancelar</button><span class="small" id="peMsg"></span></div>
+      </div>
+    </div>
+    <div><label class="form-label">Nome *</label><input class="form-control" id="pNome"></div>
+    <div><label class="form-label">E-mail</label><input class="form-control" id="pEmail" type="email"></div>
+    <div><label class="form-label">Função</label><select class="form-select" id="pPapel">{% for k, v in papeis.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    <div><label class="form-label">Cor do boneco</label><div class="cores" id="pCores">
+      {% for cor in cores %}<input type="radio" name="pcor" id="pc{{ loop.index }}" value="{{ cor }}"><label for="pc{{ loop.index }}" style="--c: {{ cor }}"></label>{% endfor %}</div></div>
+    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="pAtivo" checked><label class="form-check-label" for="pAtivo">Usuário ativo</label></div>
+    <div class="text-danger small" id="pErro"></div>
+  </div>
+  <div class="modal-footer justify-content-between"><button class="btn btn-outline-danger" id="pExcluir"><i class="bi bi-trash"></i> Excluir</button><button class="btn btn-primary" id="pSalvar">Salvar</button></div>
+</div></div></div>
+
+<!-- Modal: escolher responsável ao mover carteira para uma equipe -->
+<div class="modal fade" id="modalEscolha" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="escTitulo">Responsável</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><div class="painel-lista" id="escLista"></div>
+    <div class="small text-muted mt-2">A carteira passa para a equipe da pessoa escolhida; os números do painel, de Carteiras e de Clientes acompanham.</div></div>
+  <div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary" id="escConfirmar">Mover carteira</button></div>
+</div></div></div>
+
+<!-- Modal equipe -->
+<div class="modal fade" id="modalTime" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Equipe</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body vstack gap-3">
+    <div><label class="form-label">Nome da equipe</label><input class="form-control" id="tNome"></div>
+    <div><label class="form-label">Cor</label><div class="cores" id="tCores">
+      {% for cor in cores %}<input type="radio" name="tcor" id="tc{{ loop.index }}" value="{{ cor }}"><label for="tc{{ loop.index }}" style="--c: {{ cor }}"></label>{% endfor %}</div></div>
+    <div class="small text-muted" id="tInfo"></div>
+  </div>
+  <div class="modal-footer justify-content-between"><button class="btn btn-outline-danger" id="tExcluir"><i class="bi bi-trash"></i> Excluir equipe</button><button class="btn btn-primary" id="tSalvar">Salvar</button></div>
+</div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LEITURA = {{ leitura|tojson }}, MEUS_TIMES = {{ meus_times|tojson }}, MEU_ID = {{ meu_id|tojson }};
+let E = {{ estado|tojson }};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const palco = $('palco'), svg = $('linhas');
+const mPessoa = new bootstrap.Modal($('modalPessoa')), mTime = new bootstrap.Modal($('modalTime')), mEscolha = new bootstrap.Modal($('modalEscolha'));
+let pessoaEdit = null, timeEdit = null;
+
+async function api(url, metodo, corpo) {
+  const r = await fetch(url, {method: metodo, headers: {'Content-Type': 'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.erro || 'Erro ao salvar.');
+  return d;
+}
+const aplicar = d => { E = d; render(); };
+
+/* ---------- Indicadores da equipe (espelho do painel, só das carteiras da equipe) ---------- */
+let abertos = new Set();
+try { abertos = new Set(JSON.parse(localStorage.getItem('equipeAbertos') || '[]')); } catch (e) {}
+const salvarAbertos = () => { try { localStorage.setItem('equipeAbertos', JSON.stringify([...abertos])); } catch (e) {} };
+function miniBarras(titulo, itens, base) {
+  if (!itens.length) return '';
+  return `<div class="ind-sec"><div class="ind-tit">${titulo}</div>` + itens.map(([k, n]) =>
+    `<div class="ind-lin"><span>${esc(k)}</span><b>${n}</b></div><div class="ind-barra"><i style="width:${base ? n / base * 100 : 0}%"></i></div>`).join('') + '</div>';
+}
+function indicadores(t) {
+  const e = t.empresas, d = e.detalhes;
+  const analistas = d.carteira.length ? `<div class="ind-sec"><div class="ind-tit">Ativas por carteira <small><i class="pt verde"></i>com mov. <i class="pt"></i>sem mov.</small></div>` +
+    d.carteira.map(a => `<div class="ind-lin"><span>${esc(a.nome)}</span><b>${a.total}</b></div>
+      <div class="ind-barra dupla"><i class="v" style="width:${a.total ? a.com / a.total * 100 : 0}%"></i><i class="c" style="width:${a.total ? a.sem / a.total * 100 : 0}%"></i></div>
+      <div class="ind-sub"><b class="ok">${a.com}</b> com mov. · <b>${a.sem}</b> sem mov.</div>`).join('') + '</div>' : '';
+  return `<div class="ind-corpo">
+    <div class="ind-kpis"><div><b>${e.todas}</b><span>cadastradas</span></div><div><b class="ok">${e.total}</b><span>ativas</span></div><div><b>${e.inativas}</b><span>inativas</span></div>
+      <div><b>${t.carteiras.length}</b><span>carteiras</span></div><div><b>${(t.membros || [t]).length}</b><span>pessoas</span></div><div><b class="ok">${e.com}</b><span>c/ mov. <em>(${e.sem} sem)</em></span></div></div>
+    ${miniBarras('Ativas por tributação', d.tributacao, e.total)}${analistas}${miniBarras('Ativas por UF', d.uf, e.total)}${miniBarras('Ativas por credenciamento', d.credenciamento, e.total)}</div>`;
+}
+function atualizarBotaoIndicadores() {
+  const todos = E.times.length && E.times.every(t => abertos.has(t.id));
+  $('btnIndicadores').querySelector('span').textContent = todos ? 'Recolher indicadores' : 'Expandir indicadores';
+}
+$('btnIndicadores').onclick = () => {
+  const todos = E.times.every(t => abertos.has(t.id));
+  abertos = todos ? new Set() : new Set(E.times.map(t => t.id));
+  salvarAbertos(); render();
+};
+
+/* ---------- Boneco (figura de pessoa) ---------- */
+const figura = cor => `<svg class="fig" viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="${cor}" opacity=".16"/><circle cx="24" cy="17" r="8" fill="${cor}"/><path d="M8 42c0-9 7-15 16-15s16 6 16 15a24 24 0 0 1-32 0z" fill="${cor}"/></svg>`;
+function boneco(p, linha, tid = '', fonte = '') {
+  const el = document.createElement('div');
+  if (tid) el.dataset.tid = tid;
+  el.className = 'boneco' + (linha ? ' boneco-linha' : '') + (p.ativo ? '' : ' inativo');
+  el.draggable = !LEITURA; el.dataset.pid = p.id; el.title = `${p.nome} — ${p.papel_nome}`;
+  el.innerHTML = figura(p.cor) + (linha ? `<div><div class="nm">${esc(p.nome)}</div><small>${esc(p.papel_nome)}${p.apoio ? ' · apoio' : ''}</small></div>` : `<div class="nm">${esc(p.nome)}</div><div class="cargo">${esc(p.cargo)}${p.apoio ? ' · apoio' : ''}</div>`);
+  el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', p.id); e.dataTransfer.setData('text/origem', `${fonte}|${tid}`); e.dataTransfer.effectAllowed = 'copyMove'; });
+  if (tid && !LEITURA) el.addEventListener('contextmenu', e => menuBoneco(e, p, tid));
+  if (!LEITURA) el.addEventListener('click', () => abrirPessoa(p));
+  return el;
+}
+
+/* ---------- Botão direito no boneco: remover daquele bloco ---------- */
+let ctx = null;
+function fecharMenu() { ctx?.remove(); ctx = null; }
+function menuBoneco(e, p, tid) {
+  e.preventDefault(); fecharMenu();
+  const t = E.times.find(x => x.id === +tid); if (!t) return;
+  ctx = document.createElement('div'); ctx.className = 'ctx-menu';
+  ctx.innerHTML = `<div class="ctx-tit">${esc(p.nome)}</div>
+    <button data-a="remover"><i class="bi bi-person-dash"></i> Remover de ${esc(t.nome)}</button>
+    <button data-a="editar"><i class="bi bi-pencil"></i> Editar pessoa</button>`;
+  ctx.style.left = Math.min(e.clientX, innerWidth - 230) + 'px'; ctx.style.top = Math.min(e.clientY, innerHeight - 120) + 'px';
+  ctx.addEventListener('click', async ev => {
+    const a = ev.target.closest('button')?.dataset.a; fecharMenu();
+    if (a === 'editar') abrirPessoa(p);
+    if (a === 'remover') { try { aplicar(await api(`/api/times/${tid}/membros/${p.id}`, 'DELETE')); } catch (err) { alert(err.message); } }
+  });
+  document.body.appendChild(ctx);
+}
+document.addEventListener('click', fecharMenu); document.addEventListener('scroll', fecharMenu, true); document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharMenu(); });
+
+/* ---------- Altura: o organograma ocupa o que sobra da página (sem espaço vazio embaixo) ---------- */
+function ajustarAltura() {
+  const lay = document.querySelector('.equipe-layout');
+  if (innerWidth < 992) { lay.style.height = ''; return; }
+  const topo = lay.getBoundingClientRect().top + scrollY;
+  lay.style.height = Math.max(440, innerHeight - topo - 28) + 'px';
+}
+
+/* ---------- Mover carteira entre equipes: a responsabilidade passa a um membro da equipe de destino ---------- */
+async function atribuirCarteira(cid, pid) {
+  try { aplicar(await api(`/api/carteiras/${cid}/responsavel`, 'PUT', {responsavel_id: pid})); } catch (err) { alert(err.message); }
+}
+function soltarCarteira(cid, timeId, pessoaAlvo) {
+  if (!timeId) return alert('Solte a carteira sobre uma equipe (ou sobre uma pessoa) para definir quem será o responsável.');
+  const t = E.times.find(x => x.id === timeId); if (!t) return;
+  if (pessoaAlvo) return atribuirCarteira(cid, +pessoaAlvo);      // soltou direto sobre uma pessoa
+  if (t.carteiras_info.some(k => k.id === cid)) return;           // já é desta equipe
+  if (!t.membros.length) return alert(`A ${t.nome} não tem ninguém. Coloque uma pessoa nela primeiro.`);
+  if (t.membros.length === 1) return atribuirCarteira(cid, t.membros[0].id);
+  const k = E.times.flatMap(x => x.carteiras_info).find(x => x.id === cid);
+  $('escTitulo').textContent = `Quem será responsável pela ${k ? k.nome : 'carteira'} na ${t.nome}?`;
+  $('escLista').innerHTML = t.membros.map((m, i) => `<label class="item-cli"><input class="form-check-input mt-0" type="radio" name="escPessoa" value="${m.id}" ${i === 0 ? 'checked' : ''}>
+    <div><div class="nome">${esc(m.nome)}</div><small>${esc(m.cargo)}</small></div></label>`).join('');
+  $('escConfirmar').onclick = async () => { const v = document.querySelector('input[name=escPessoa]:checked')?.value; mEscolha.hide(); if (v) await atribuirCarteira(cid, +v); };
+  mEscolha.show();
+}
+
+/* ---------- Soltar pessoas ---------- */
+function alvoSoltar(el, timeId) {
+  if (LEITURA) return;
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('arrastando-sobre'); });
+  el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('arrastando-sobre'); });
+  el.addEventListener('drop', async e => {
+    e.preventDefault(); el.classList.remove('arrastando-sobre');
+    const pid = e.dataTransfer.getData('text/plain'); if (!pid) return;
+    if (pid.startsWith('c:')) return soltarCarteira(+pid.slice(2), timeId, e.target.closest('.boneco')?.dataset.pid);
+    const [fonte, origem] = (e.dataTransfer.getData('text/origem') || '|').split('|');   // arrastar nunca tira de outro bloco; só soltar em "Sem equipe" ou o botão direito removem
+    const corpo = {time_id: timeId, origem_id: origem ? +origem : null, mover: timeId === null};   // soltar em outro bloco só adiciona (a pessoa continua responsável pela carteira dela no bloco de origem)
+    try { aplicar(await api(`/api/pessoas/${pid}/mover`, 'POST', corpo)); } catch (err) { alert(err.message); }
+  });
+}
+
+/* ---------- Arrastar nós (equipe / coordenador) ---------- */
+function arrastavel(no, alca, aoSoltar) {
+  if (LEITURA) return;
+  alca.addEventListener('pointerdown', e => {
+    if (e.target.closest('button') || e.target.closest('.boneco') || e.target.closest('a')) return;
+    const x0 = e.clientX, y0 = e.clientY, l0 = no.offsetLeft, t0 = no.offsetTop;
+    alca.setPointerCapture(e.pointerId);
+    const mover = ev => {
+      no.style.left = Math.max(0, l0 + (ev.clientX - x0) / Z) + 'px';
+      no.style.top = Math.max(0, t0 + (ev.clientY - y0) / Z) + 'px'; linhas();
+    };
+    const fim = () => { alca.removeEventListener('pointermove', mover); alca.removeEventListener('pointerup', fim);
+      tamanho(); aoSoltar(parseFloat(no.style.left), parseFloat(no.style.top)); };
+    alca.addEventListener('pointermove', mover); alca.addEventListener('pointerup', fim);
+  });
+}
+
+/* ---------- Zoom e ajuste à tela ---------- */
+const canvas = $('canvas'), sizer = $('sizer');
+let Z = 1, ajusteAuto = true;
+function limites() {
+  const ns = [...palco.querySelectorAll('.no-coord, .no-time')];
+  if (!ns.length) return {x0: 0, y0: 0, x1: 600, y1: 400};
+  return {x0: Math.min(...ns.map(n => n.offsetLeft)), y0: Math.min(...ns.map(n => n.offsetTop)),
+          x1: Math.max(...ns.map(n => n.offsetLeft + n.offsetWidth)), y1: Math.max(...ns.map(n => n.offsetTop + n.offsetHeight))};
+}
+function tamanho() {   // o palco sempre cobre o conteúdo e a área visível
+  const b = limites(), W = Math.max(canvas.clientWidth / Z, b.x1 + 24), H = Math.max(canvas.clientHeight / Z, b.y1 + 24);
+  palco.style.width = W + 'px'; palco.style.height = H + 'px';
+  sizer.style.width = W * Z + 'px'; sizer.style.height = H * Z + 'px';
+}
+function definirZoom(z, cx, cy) {   // cx, cy: ponto (px da área visível) que deve ficar parado
+  z = Math.min(2, Math.max(.2, z));
+  cx ??= canvas.clientWidth / 2; cy ??= canvas.clientHeight / 2;
+  const px = (canvas.scrollLeft + cx) / Z, py = (canvas.scrollTop + cy) / Z;
+  Z = z; palco.style.transform = `scale(${Z})`; tamanho();
+  canvas.scrollLeft = px * Z - cx; canvas.scrollTop = py * Z - cy;
+  $('zRotulo').textContent = Math.round(Z * 100) + '%';
+}
+function ajustar() {
+  if (!canvas.clientWidth) return;
+  ajusteAuto = true;
+  const b = limites(), cw = canvas.clientWidth, ch = canvas.clientHeight, m = 32;
+  // Ajusta pela LARGURA (tudo lado a lado visível). Se for alto demais, rola na vertical em vez de encolher até ficar ilegível.
+  const porLargura = (cw - 2 * m) / (b.x1 - b.x0);
+  const porAltura = LEITURA ? (ch - 2 * m) / (b.y1 - b.y0) : Infinity;   // colaborador: o organograma inteiro cabe na tela
+  Z = Math.max(.2, Math.min(1, porLargura, porAltura)); palco.style.transform = `scale(${Z})`; tamanho();
+  $('zRotulo').textContent = Math.round(Z * 100) + '%';
+  canvas.scrollLeft = Math.max(0, b.x0 * Z - Math.max(m, (cw - (b.x1 - b.x0) * Z) / 2));
+  canvas.scrollTop = Math.max(0, b.y0 * Z - m);
+}
+$('zMais').onclick = () => { ajusteAuto = false; definirZoom(Z * 1.2); };
+$('zMenos').onclick = () => { ajusteAuto = false; definirZoom(Z / 1.2); };
+$('zRotulo').onclick = () => { ajusteAuto = false; definirZoom(1); };
+$('zAjustar').onclick = ajustar;
+canvas.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault(); ajusteAuto = false;
+  const r = canvas.getBoundingClientRect();
+  definirZoom(Z * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top);
+}, {passive: false});
+
+
+/* carteiras + totais + indicadores de um nó (equipe ou coordenação). Sem dados (empresas == null) = oculto para o colaborador. */
+function faixaERodape(t) {
+  if (t.empresas == null) return '';
+  const key = t.chave ?? t.id;
+  return `<div class="cart-faixa">${t.carteiras_info.length
+        ? t.carteiras_info.map(k => `<a class="cart-chip" data-cid="${k.id}" draggable="${!LEITURA}" href="${LEITURA ? '/carteiras/minha' : '/carteiras/' + k.id}" title="Abrir ${esc(k.nome)}"><i class="bi bi-briefcase-fill"></i><span><b>${esc(k.nome)}</b><small>${esc(k.resp)} · ${k.total} empresas</small></span></a>`).join('')
+        : '<span class="cart-chip vazio"><i class="bi bi-briefcase"></i><span><b>Sem carteira</b><small>atribua em Carteiras</small></span></span>'}</div>
+      <div class="no-time-rodape">
+        <div class="empresas"><div><b>${t.empresas.total}</b><span>empresas</span></div><div class="com"><b>${t.empresas.com}</b><span>com mov.</span></div><div class="sem"><b>${t.empresas.sem}</b><span>sem mov.</span></div></div>
+        <div class="regimes"><span title="Simples Nacional">Simples <b>${t.empresas.simples}</b></span><span title="Lucro Presumido">Presumido <b>${t.empresas.presumido}</b></span><span title="Lucro Real">Real <b>${t.empresas.real}</b></span>${t.empresas.outros ? `<span title="Outros regimes">Outros <b>${t.empresas.outros}</b></span>` : ''}</div>
+        <button class="btn-ind" data-tid="${key}"><i class="bi bi-chevron-${abertos.has(key) ? 'up' : 'down'}"></i> ${abertos.has(key) ? 'Ocultar indicadores' : 'Ver indicadores'}</button>
+        ${abertos.has(key) ? indicadores(t) : ''}
+
+        </div>`;
+}
+
+/* ---------- Renderização ---------- */
+function render() {
+  const lc = $('listaCoord'); lc.innerHTML = '';
+  E.diretoria.forEach(c => {
+    const el = boneco(c, true); el.draggable = false; el.style.cursor = 'pointer';
+    el.title = 'Diretoria: fica acima do coordenador no organograma. Clique para editar.'; lc.appendChild(el);
+  });
+  E.coordenadores.forEach(c => {
+    const el = boneco(c, true); el.draggable = false; el.style.cursor = 'pointer';
+    el.title = 'Coordenador: fica no topo do organograma. Clique para editar.'; lc.appendChild(el);
+  });
+  const lt = $('listaTimes'); lt.innerHTML = '';
+  E.times.forEach(t => {
+    const g = document.createElement('div'); g.className = 'grupo-time'; g.style.setProperty('--c', t.cor);
+    g.innerHTML = `<div class="nav-titulo-lat"><span class="ponto" style="--c:${t.cor}"></span> ${esc(t.nome)} <em>${esc(t.formato)}</em></div>`;
+    const corpo = document.createElement('div'); corpo.className = 'd-flex flex-column gap-2';
+    t.membros.forEach(m => corpo.appendChild(boneco(m, true, t.id, 'lista')));
+    if (!t.membros.length) corpo.innerHTML = '<div class="small text-muted px-1">Equipe vazia</div>';
+    g.appendChild(corpo); alvoSoltar(g, t.id); lt.appendChild(g);
+  });
+  const band = $('bandeja'); band.innerHTML = '';
+  E.livres.forEach(p => band.appendChild(boneco(p, true, '', 'lista')));
+  if (!E.livres.length) band.innerHTML = '<div class="text-muted small px-1 pb-2">Todos já estão em equipes.</div>';
+  alvoSoltar(band, null);
+
+  palco.querySelectorAll('.no-coord, .no-time').forEach(n => n.remove());
+  E.diretoria.forEach((c, i) => {
+    const no = document.createElement('div'); no.className = 'no-coord no-dir'; no.dataset.pid = c.id;
+    no.style.left = (c.pos_x ?? 420 + i * 200) + 'px'; no.style.top = (c.pos_y ?? 30) + 'px';
+    no.innerHTML = figura(c.cor) + `<div class="nm">${esc(c.nome)}</div><small>${esc(c.papel_nome)}</small>
+      <div><button class="btn-mini" title="Editar"><i class="bi bi-pencil"></i></button></div>`;
+    no.querySelector('button').onclick = () => abrirPessoa(c);
+    palco.appendChild(no);
+    arrastavel(no, no, async (x, y) => { c.pos_x = x; c.pos_y = y; await api(`/api/pessoas/${c.id}`, 'PUT', {pos_x: x, pos_y: y}); });
+  });
+  E.coordenadores.forEach((c, i) => {
+    const adapt = {...c, chave: 'c' + c.id, membros: [c]}, temCart = c.empresas != null;
+    const no = document.createElement('div'); no.className = 'no-coord' + (temCart ? ' com-cart' : ''); no.dataset.pid = c.id;
+    no.style.left = (c.pos_x ?? 420 + i * 200) + 'px'; no.style.top = (c.pos_y ?? 30) + 'px';
+    no.innerHTML = figura(c.cor) + `<div class="nm">${esc(c.nome)}</div><small>${esc(c.papel_nome)}</small>
+      <div><button class="btn-mini" title="Editar"><i class="bi bi-pencil"></i></button></div>
+      ${temCart && !LEITURA ? (c.carteiras_info.length ? faixaERodape(adapt) : '<div class="cart-faixa"><span class="cart-chip vazio"><i class="bi bi-briefcase"></i><span><b>Sem carteira</b><small>arraste uma carteira para cá</small></span></span></div>') : ''}`;
+    no.querySelector('button').onclick = () => abrirPessoa(c);
+    no.querySelectorAll('.cart-chip[data-cid]').forEach(ch => ch.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', 'c:' + ch.dataset.cid); e.dataTransfer.effectAllowed = 'move'; e.stopPropagation(); }));
+    const bi = no.querySelector('.btn-ind'); if (bi) bi.onclick = () => { const k = 'c' + c.id; abertos.has(k) ? abertos.delete(k) : abertos.add(k); salvarAbertos(); render(); };
+    if (!LEITURA) {   // soltar uma carteira sobre a coordenação passa a responsabilidade ao coordenador
+      no.addEventListener('dragover', e => { e.preventDefault(); no.classList.add('arrastando-sobre'); });
+      no.addEventListener('dragleave', e => { if (!no.contains(e.relatedTarget)) no.classList.remove('arrastando-sobre'); });
+      no.addEventListener('drop', e => { e.preventDefault(); no.classList.remove('arrastando-sobre'); const v = e.dataTransfer.getData('text/plain'); if (v.startsWith('c:')) atribuirCarteira(+v.slice(2), c.id); });
+    }
+    palco.appendChild(no);
+    arrastavel(no, no, async (x, y) => { c.pos_x = x; c.pos_y = y; await api(`/api/pessoas/${c.id}`, 'PUT', {pos_x: x, pos_y: y}); });
+  });
+
+  E.times.forEach(t => {
+    const no = document.createElement('div'); no.className = 'no-time' + (LEITURA ? (MEUS_TIMES.includes(t.id) ? ' meu' : ' escuro') : ''); no.dataset.tid = t.id; no.style.setProperty('--c', t.cor);
+    no.style.left = t.pos_x + 'px'; no.style.top = t.pos_y + 'px'; no.dataset.base = t.pos_y;
+    no.innerHTML = `<div class="no-time-cab"><span class="titulo">${esc(t.nome)}</span><span class="formato">${esc(t.formato)}</span>
+        <button class="btn-mini" title="Editar equipe"><i class="bi bi-pencil"></i></button></div>
+      <div class="no-time-corpo"></div>
+      ${faixaERodape(t)}`;
+    const corpo = no.querySelector('.no-time-corpo');
+    if (!t.membros.length) corpo.innerHTML = '<span class="vazio">Solte pessoas aqui</span>';
+    t.membros.forEach(p => corpo.appendChild(boneco(p, false, t.id, 'no')));
+    no.querySelector('button').onclick = () => abrirTime(t);
+    no.querySelectorAll('.cart-chip[data-cid]').forEach(ch => ch.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', 'c:' + ch.dataset.cid); e.dataTransfer.effectAllowed = 'move'; e.stopPropagation(); }));
+    const bi = no.querySelector('.btn-ind'); if (bi) bi.onclick = () => { abertos.has(t.id) ? abertos.delete(t.id) : abertos.add(t.id); salvarAbertos(); render(); };
+    alvoSoltar(no, t.id);
+    palco.appendChild(no);
+    arrastavel(no, no, async (x, y) => { t.pos_x = x; t.pos_y = y; no.dataset.base = y; await api(`/api/times/${t.id}`, 'PUT', {pos_x: x, pos_y: y}); });
+  });
+  if (LEITURA) layoutLocal(); else afastarEquipes();
+  atualizarBotaoIndicadores(); tamanho();
+  requestAnimationFrame(linhas);
+}
+
+/* Visão do colaborador: não grava posições; empilha diretoria, coordenação e equipes centralizadas, sem vãos, com as medidas reais dos cartões */
+function layoutLocal() {
+  const GX = 36, GY = 64, X0 = 40, Y0 = 24;
+  const grupo = sel => [...palco.querySelectorAll(sel)].map(no => ({no, w: no.offsetWidth, h: no.offsetHeight}));
+  const linhas3 = [grupo('.no-dir'), grupo('.no-coord:not(.no-dir)'), grupo('.no-time')].filter(l => l.length);
+  const larg = l => l.reduce((a, x) => a + x.w, 0) + Math.max(0, l.length - 1) * GX;
+  const eixo = X0 + Math.max(...linhas3.map(larg)) / 2;
+  let y = Y0;
+  linhas3.forEach(l => { let x = eixo - larg(l) / 2; l.forEach(it => { it.no.style.left = Math.round(x) + 'px'; it.no.style.top = y + 'px'; x += it.w + GX; }); y += Math.max(...l.map(it => it.h)) + GY; });
+}
+
+/* Quando os indicadores da coordenação/diretoria abrem, o cartão cresce: empurra as equipes para baixo (sem mexer na posição gravada) */
+function afastarEquipes() {
+  const GAP = 90, topos = [...palco.querySelectorAll('.no-coord')], times = [...palco.querySelectorAll('.no-time')];
+  if (!topos.length || !times.length) return;
+  const fundo = Math.max(...topos.map(n => n.offsetTop + n.offsetHeight)), base = Math.min(...times.map(n => +n.dataset.base));
+  const delta = Math.max(0, fundo + GAP - base);
+  times.forEach(n => n.style.top = (+n.dataset.base + delta) + 'px');
+}
+
+/* Conectores estilo organograma: coordenador -> cada equipe */
+function linhas() {
+  svg.innerHTML = '';
+  palco.querySelectorAll('.no-dir').forEach(dir => {          // diretoria -> coordenação
+    const cx = dir.offsetLeft + dir.offsetWidth / 2, cy = dir.offsetTop + dir.offsetHeight;
+    palco.querySelectorAll('.no-coord:not(.no-dir)').forEach(co => {
+      const tx = co.offsetLeft + co.offsetWidth / 2, ty = co.offsetTop, my = cy + Math.max(14, (ty - cy) / 2);
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', `M${cx} ${cy} V${my} H${tx} V${ty}`); p.style.stroke = '#002068'; p.style.opacity = .75; svg.appendChild(p);
+    });
+  });
+  palco.querySelectorAll('.no-coord:not(.no-dir)').forEach(coord => {
+    const cx = coord.offsetLeft + coord.offsetWidth / 2, cy = coord.offsetTop + coord.offsetHeight;
+    palco.querySelectorAll('.no-time').forEach(no => {
+      const tx = no.offsetLeft + no.offsetWidth / 2, ty = no.offsetTop, my = cy + Math.max(20, (ty - cy) / 2);
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', `M${cx} ${cy} V${my} H${tx} V${ty}`);
+      p.style.stroke = getComputedStyle(no).getPropertyValue('--c');
+      p.style.opacity = .75;
+      svg.appendChild(p);
+    });
+  });
+}
+
+/* ---------- Pessoas ---------- */
+function abrirPessoa(p) {
+  pessoaEdit = p; $('pErro').textContent = '';
+  $('tituloPessoa').textContent = p ? 'Editar usuário' : 'Novo usuário';
+  $('pNome').value = p?.nome || ''; $('pEmail').value = p?.email || ''; $('pPapel').value = p?.papel || 'analista_fiscal';
+  $('pAtivo').checked = p ? p.ativo : true; $('pExcluir').style.visibility = p ? 'visible' : 'hidden';
+  const cor = p?.cor || document.querySelectorAll('#pCores input')[(E.livres.length + E.times.length) % 10].value;
+  document.querySelectorAll('#pCores input').forEach(i => i.checked = i.value === cor);
+  $('pInfo').innerHTML = infoPessoa(p);
+  carregarEmpresas(p);
+  mPessoa.show();
+}
+
+/* ---------- Empresas da pessoa: ver, mover de carteira ou de responsável ---------- */
+let EMP = {empresas: [], carteiras: [], pessoas: []}; const selEmp = new Set();
+const optH = (v, t) => `<option value="${v}">${esc(t)}</option>`;
+function acharPessoa(id) {
+  return [...E.diretoria, ...E.coordenadores, ...E.livres, ...E.times.flatMap(t => t.membros)].find(x => x.id === id);
+}
+async function carregarEmpresas(p) {
+  selEmp.clear(); $('peMovePainel').hidden = true; $('peMsg').textContent = ''; $('peMsgTopo').textContent = ''; $('peBusca').value = '';
+  const secao = $('pEmpresas'); secao.hidden = !p;
+  if (secao.hidden) return;
+  EMP = await api(`/api/pessoas/${p.id}/empresas`, 'GET'); desenharEmpresas();
+}
+function desenharEmpresas() {
+  const q = $('peBusca').value.toLowerCase(), vis = EMP.empresas.filter(c => !q || (c.empresa + ' ' + c.cnpj).toLowerCase().includes(q));
+  $('peQtd').textContent = EMP.empresas.length;
+  $('peLista').innerHTML = vis.map(c => `<label class="item-cli ${selEmp.has(c.id) ? 'sel' : ''}"><input class="form-check-input mt-0" type="checkbox" data-id="${c.id}" ${selEmp.has(c.id) ? 'checked' : ''}>
+    <div class="min-w-0 flex-grow-1"><div class="nome">${esc(c.empresa)}${c.situacao !== 'ATIVO' ? ' <span class="badge-sit sit-INATIVO">inativa</span>' : ''}</div>
+    <small>${esc([c.cnpj, c.tributacao, c.uf, c.movimento ? (c.movimento === 'SIM' ? 'com mov.' : 'sem mov.') : ''].filter(Boolean).join(' · '))}</small></div>
+    <span class="pill">${esc(c.carteira)}</span></label>`).join('') || '<div class="text-center text-muted p-3 small">Nenhuma empresa sob responsabilidade desta pessoa.</div>';
+  $('peSel').textContent = selEmp.size; $('peMover').disabled = $('peRemover').disabled = !selEmp.size;
+}
+$('peLista').addEventListener('change', e => { const id = +e.target.dataset.id; e.target.checked ? selEmp.add(id) : selEmp.delete(id); desenharEmpresas(); });
+$('peBusca').addEventListener('input', desenharEmpresas);
+$('peMarcar').onclick = () => { const q = $('peBusca').value.toLowerCase();
+  EMP.empresas.filter(c => !q || (c.empresa + ' ' + c.cnpj).toLowerCase().includes(q)).forEach(c => selEmp.add(c.id)); desenharEmpresas(); };
+function cartPessoaOpcoes() {
+  const lista = EMP.carteiras.filter(k => k.resp_id === +$('pePessoa').value);
+  $('peCartPessoa').innerHTML = lista.map(k => optH(k.id, `${k.nome} (${k.total} empresas)`)).join('') + optH('nova', '+ Criar nova carteira para esta pessoa');
+  $('peCartPessoa').value = lista.length ? lista[0].id : 'nova';
+}
+function alternarTipoEmp() { const r = $('peTipoResp').checked; $('peCart').hidden = r; $('peResp').hidden = !r; }
+$('peMover').onclick = () => {
+  $('peMsg').textContent = '';
+  $('peCarteira').innerHTML = EMP.carteiras.map(k => optH(k.id, `${k.nome} — ${k.resp || 'sem responsável'} (${k.total} empresas)`)).join('');
+  $('pePessoa').innerHTML = EMP.pessoas.map(x => optH(x.id, `${x.nome} · ${x.cargo}`)).join('');
+  cartPessoaOpcoes(); $('peTipoCart').checked = true; alternarTipoEmp(); $('peMovePainel').hidden = false;
+};
+['peTipoCart', 'peTipoResp'].forEach(i => $(i).addEventListener('change', alternarTipoEmp));
+$('pePessoa').addEventListener('change', cartPessoaOpcoes);
+$('peCancelar').onclick = () => { $('peMovePainel').hidden = true; };
+$('peConfirmar').onclick = async () => {
+  const corpo = {ids: [...selEmp]};
+  if ($('peTipoResp').checked) { const a = $('peCartPessoa').value; if (a === 'nova') corpo.responsavel_id = +$('pePessoa').value; else corpo.carteira_id = +a; }
+  else corpo.carteira_id = +$('peCarteira').value;
+  try {
+    const d = await api('/carteiras/mover', 'POST', corpo);
+    await atualizarPessoa(`${corpo.ids.length} empresa(s) movida(s) para ${d.destino.nome}${d.destino.responsavel ? ' (' + d.destino.responsavel + ')' : ''}.`);
+  } catch (err) { avisoEmpresas(err.message, false); }
+};
+function avisoEmpresas(texto, ok) { const el = $('peMsgTopo'); el.className = 'small mt-2 ' + (ok ? 'text-success' : 'text-danger'); el.textContent = texto; }
+async function atualizarPessoa(texto) {   // recarrega números do organograma, resumo e lista da pessoa
+  const p = pessoaEdit; aplicar(await api('/api/equipe', 'GET'));
+  pessoaEdit = acharPessoa(p.id) || p; $('pInfo').innerHTML = infoPessoa(pessoaEdit);
+  await carregarEmpresas(pessoaEdit); avisoEmpresas(texto, true);
+}
+$('peRemover').onclick = async () => {
+  const n = selEmp.size;
+  if (!confirm(`Remover ${n} empresa(s) da carteira?\nElas ficam sem carteira e sem responsável até você definir um novo destino.`)) return;
+  try { await api('/carteiras/remover', 'POST', {ids: [...selEmp]}); await atualizarPessoa(`${n} empresa(s) removida(s). Estão sem carteira e sem responsável — defina o destino em Clientes ou na tela da carteira.`); }
+  catch (err) { avisoEmpresas(err.message, false); }
+};
+function infoPessoa(p) {
+  if (!p) return '';
+  const e = p.empresas || {total: 0, com: 0, sem: 0, simples: 0, presumido: 0, real: 0, outros: 0};
+  const eq = p.diretoria ? 'Diretoria' : p.coordenador ? 'Coordenação fiscal' : (p.equipe ? esc(p.equipe) : 'Sem equipe');
+  return `<div class="info-usuario">
+    <div class="small mb-2"><b>${esc(p.papel_nome)}</b> · ${eq}${p.carteiras.length ? ' · <i class="bi bi-briefcase"></i> ' + esc(p.carteiras.join(', ')) : ''}</div>
+    ${(p.coordenador || p.diretoria) && !p.carteiras.length ? '' : `<div class="ind-kpis" style="grid-template-columns:repeat(4,1fr)">
+      <div><b class="ok">${e.total}</b><span>empresas ativas</span></div><div><b class="ok">${e.com}</b><span>com mov.</span></div>
+      <div><b>${e.sem}</b><span>sem mov.</span></div><div><b>${e.inativas || 0}</b><span>inativas</span></div></div>
+      <div class="regimes"><span>Simples <b>${e.simples}</b></span><span>Presumido <b>${e.presumido}</b></span><span>Real <b>${e.real}</b></span>${e.outros ? `<span>Outros <b>${e.outros}</b></span>` : ''}</div>
+      <div class="small text-muted">Empresas das carteiras sob responsabilidade de ${esc(p.nome)}.</div>`}
+  </div>`;
+}
+$('btnNovaPessoa').onclick = () => abrirPessoa(null);
+$('pSalvar').onclick = async () => {
+  const corpo = {nome: $('pNome').value, email: $('pEmail').value, papel: $('pPapel').value, ativo: $('pAtivo').checked,
+    cor: document.querySelector('#pCores input:checked')?.value};
+  try { aplicar(pessoaEdit ? await api(`/api/pessoas/${pessoaEdit.id}`, 'PUT', corpo) : await api('/api/pessoas', 'POST', corpo)); mPessoa.hide(); }
+  catch (e) { $('pErro').textContent = e.message; }
+};
+$('pExcluir').onclick = async () => {
+  if (!confirm(`Excluir ${pessoaEdit.nome}? Clientes atribuídos a essa pessoa ficam sem analista.`)) return;
+  try { aplicar(await api(`/api/pessoas/${pessoaEdit.id}`, 'DELETE')); mPessoa.hide(); } catch (e) { $('pErro').textContent = e.message; }
+};
+
+/* ---------- Equipes ---------- */
+function abrirTime(t) {
+  timeEdit = t; $('tNome').value = t.nome; $('tInfo').textContent = `${t.formato} · ${t.membros.length} pessoa(s)`;
+  document.querySelectorAll('#tCores input').forEach(i => i.checked = i.value === t.cor); mTime.show();
+}
+$('tSalvar').onclick = async () => {
+  aplicar(await api(`/api/times/${timeEdit.id}`, 'PUT', {nome: $('tNome').value.trim() || timeEdit.nome, cor: document.querySelector('#tCores input:checked')?.value}));
+  mTime.hide();
+};
+$('tExcluir').onclick = async () => {
+  if (!confirm(`Excluir a equipe "${timeEdit.nome}"? As pessoas voltam para "Sem equipe" e as carteiras ficam sem equipe.`)) return;
+  aplicar(await api(`/api/times/${timeEdit.id}`, 'DELETE')); mTime.hide();
+};
+$('btnNovaEquipe').onclick = async () => aplicar(await api('/api/times', 'POST', {}));
+
+/* Reorganiza: coordenadores centralizados no topo e todas as equipes lado a lado numa única linha; depois ajusta à tela */
+$('btnOrganizar').onclick = async () => {
+  /* Simétrico: diretoria, coordenação e equipes formam três linhas centralizadas no mesmo eixo vertical (medidas reais dos cartões). */
+  const GX = 40, GY = 80, X0 = 60, Y0 = 30;
+  const dom = (sel, id) => palco.querySelector(`${sel}[data-${sel === '.no-time' ? 'tid' : 'pid'}="${id}"]`);
+  const linha = ids => ids.map(([no, dado]) => ({no, dado, w: no.offsetWidth, h: no.offsetHeight}));
+  const dir = linha(E.diretoria.map(c => [dom('.no-dir', c.id), c]).filter(([n]) => n));
+  const coo = linha(E.coordenadores.map(c => [dom('.no-coord:not(.no-dir)', c.id), c]).filter(([n]) => n));
+  const tim = linha(E.times.map(t => [dom('.no-time', t.id), t]).filter(([n]) => n));
+  const larg = l => l.reduce((a, x) => a + x.w, 0) + Math.max(0, l.length - 1) * GX;
+  const eixo = X0 + Math.max(larg(dir), larg(coo), larg(tim)) / 2;
+  let y = Y0; const colocar = (l, fn) => { let x = eixo - larg(l) / 2; l.forEach(it => { fn(it, x, y); x += it.w + GX; }); y += Math.max(0, ...l.map(it => it.h)) + GY; };
+  const ops = [];
+  colocar(dir, (it, x, yy) => ops.push(() => api(`/api/pessoas/${it.dado.id}`, 'PUT', {pos_x: Math.round(x), pos_y: yy})));
+  colocar(coo, (it, x, yy) => ops.push(() => api(`/api/pessoas/${it.dado.id}`, 'PUT', {pos_x: Math.round(x), pos_y: yy})));
+  const posTimes = []; colocar(tim, (it, x, yy) => posTimes.push({id: it.dado.id, pos_x: Math.round(x), pos_y: yy}));
+  for (const op of ops) await op();
+  if (posTimes.length) await api('/api/times/posicoes', 'POST', posTimes);
+  aplicar(await api('/api/equipe', 'GET'));
+  requestAnimationFrame(ajustar);
+};
+window.addEventListener('resize', () => { ajustarAltura(); tamanho(); linhas(); if (ajusteAuto) ajustar(); });
+ajustarAltura();
+render();
+ajustar();
+(function evitarSobreposicao() {   // a coordenação agora também mostra carteiras: se cobrir alguma equipe, reorganiza uma vez
+  if (LEITURA) return;
+  const r = n => n.getBoundingClientRect(), cs = [...palco.querySelectorAll('.no-coord')], ts = [...palco.querySelectorAll('.no-time')];
+  const cobre = cs.some(c => ts.some(t => { const a = r(c), b = r(t); return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; }));
+  if (cobre) $('btnOrganizar').click();
+})();
+</script>
+{% endblock %}

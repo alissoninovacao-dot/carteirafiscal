@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Nova demanda interna' if nova else 'Editar ' ~ d.codigo }}{% endblock %}
+{% block conteudo %}
+<nav class="small text-muted mb-2">
+  <a href="{{ url_for('internas.lista') }}"><i class="bi bi-clipboard2-check"></i> {{ 'Minhas demandas' if usuario_logado().e_colaborador else 'Controle de demandas' }}</a> <i class="bi bi-chevron-right"></i>
+  {% if not nova %}<a href="{{ url_for('internas.detalhe', did=d.id) }}">{{ d.codigo }}</a> <i class="bi bi-chevron-right"></i>{% endif %}
+  <span>{{ 'Nova demanda' if nova else 'Editar' }}</span>
+</nav>
+<div class="cabecalho-pagina"><div><h1>{{ 'Nova demanda interna' if nova else 'Editar demanda ' ~ d.codigo }}</h1>
+  <div class="text-muted">Crie a demanda e atribua a uma equipe, a um colaborador ou a vários.</div></div></div>
+
+<form method="post" enctype="multipart/form-data" class="row g-3">
+  <div class="col-lg-7">
+    <div class="bloco">
+      <div class="mb-3"><label class="form-label">Título <span class="text-danger">*</span></label>
+        <input name="titulo" class="form-control form-control-lg" required maxlength="250" value="{{ d.titulo or '' }}" autofocus></div>
+      <div class="mb-3"><label class="form-label">Descrição</label>
+        <textarea name="descricao" class="form-control" rows="7" placeholder="Contexto, o que precisa ser feito, critérios de entrega…">{{ d.descricao or '' }}</textarea></div>
+      {% if nova %}
+      <div class="mb-3"><label class="form-label">Etapas / checklist <small class="text-muted fw-normal">— opcional, uma etapa por linha</small></label>
+        <textarea name="checklist" class="form-control" rows="4" placeholder="Conferir XMLs&#10;Gerar a apuração&#10;Enviar para revisão">{{ request.form.get('checklist', '') }}</textarea></div>
+      <div class="mb-1"><label class="form-label">Anexos</label><input type="file" name="anexos" class="form-control" multiple></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="bloco mb-3">
+      <label class="form-label fw-bold"><i class="bi bi-people"></i> Atribuir a <span class="text-danger">*</span></label>
+      <div class="form-text mb-2">Escolha uma equipe inteira, um colaborador ou vários. Pode combinar.</div>
+      <div class="small fw-semibold text-muted mb-1">Equipes</div>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for t in equipes %}
+        <input type="checkbox" class="btn-check" name="equipes" id="eq{{ t.id }}" value="{{ t.id }}" {{ 'checked' if t.id in sel_equipes }}>
+        <label class="btn btn-sm btn-outline-secondary text-start" for="eq{{ t.id }}" style="--c:{{ t.cor }}" title="{{ t.membros|map(attribute='nome')|join(', ') }}">
+          <span class="ponto" style="--c:{{ t.cor }}"></span> {{ t.nome }} <small class="text-muted">· {{ t.membros|length }}</small></label>
+        {% else %}<span class="small text-muted">Nenhuma equipe criada.</span>{% endfor %}
+      </div>
+      <div class="d-flex justify-content-between align-items-center mb-1"><div class="small fw-semibold text-muted">Colaboradores <span class="pill" id="qtdSel">0</span></div>
+        <input type="search" class="form-control form-control-sm" id="buscaPessoa" placeholder="Buscar…" style="max-width:150px"></div>
+      <div class="lista-pessoas" id="listaPessoas">
+        {% for p in pessoas %}
+        <label class="item-pessoa" data-n="{{ p.nome|lower }}">
+          <input type="checkbox" class="form-check-input" name="pessoas" value="{{ p.id }}" {{ 'checked' if p.id in sel_pessoas }}>
+          <span class="avatar" style="--av:{{ p.cor }}; width:26px; height:26px; font-size:.62rem">{{ p.iniciais }}</span>
+          <span class="flex-grow-1">{{ p.nome }}</span><small class="text-muted">{{ p.cargo }}{% if p.times %} · {{ p.times|map(attribute='nome')|join(', ') }}{% endif %}</small>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="bloco">
+      {% if nova %}
+      <div class="mb-3"><label class="form-label">Status inicial</label>
+        <select name="status" class="form-select">{% for k, v in STATUS %}<option value="{{ k }}" {{ 'selected' if d.status == k }}>{{ v }}</option>{% endfor %}</select></div>
+      {% endif %}
+      <div class="mb-3"><label class="form-label">Prioridade</label>
+        <div class="d-flex gap-1 flex-wrap">
+          {% for k, v in PRIORIDADES %}
+          <input type="radio" class="btn-check" name="prioridade" id="pr{{ k }}" value="{{ k }}" {{ 'checked' if d.prioridade == k }}>
+          <label class="btn btn-sm btn-prio prio-{{ k }}" for="pr{{ k }}">{{ v }}</label>
+          {% endfor %}
+        </div></div>
+      <div class="row g-2 mb-3">
+        <div class="col-6"><label class="form-label">Início</label><input type="date" name="data_inicio" class="form-control" value="{{ d.data_inicio.isoformat() if d.data_inicio else '' }}"></div>
+        <div class="col-6"><label class="form-label">Prazo</label><input type="date" name="prazo" class="form-control" value="{{ d.prazo.isoformat() if d.prazo else '' }}"></div>
+      </div>
+      <div class="mb-3"><label class="form-label">Próximo acompanhamento</label>
+        <input type="date" name="proximo_acompanhamento" class="form-control" value="{{ d.proximo_acompanhamento.isoformat() if d.proximo_acompanhamento else '' }}">
+        <div class="form-text">Data para você voltar a cobrar/conferir esta demanda.</div></div>
+      <div class="mb-3"><label class="form-label">Etiquetas</label>
+        <input name="etiquetas" class="form-control" value="{{ etiquetas }}" placeholder="Separe por vírgula: fechamento, ICMS, cliente X"></div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('internas.detalhe', did=d.id) if not nova else url_for('internas.lista') }}" class="btn btn-outline-secondary flex-fill">Cancelar</a>
+        <button class="btn btn-primary flex-fill"><i class="bi bi-check-lg"></i> {{ 'Criar e atribuir' if nova else 'Salvar' }}</button>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const cont = () => { document.getElementById('qtdSel').textContent = document.querySelectorAll('#listaPessoas input:checked').length; };
+document.getElementById('listaPessoas').addEventListener('change', cont); cont();
+document.getElementById('buscaPessoa').addEventListener('input', e => { const q = norm(e.target.value);
+  document.querySelectorAll('#listaPessoas .item-pessoa').forEach(l => l.hidden = q && !norm(l.dataset.n).includes(q)); });
+</script>
+{% endblock %}

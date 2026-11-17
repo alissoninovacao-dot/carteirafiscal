@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block titulo %}Obrigações e prazos{% endblock %}
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <div><h1>Obrigações e prazos</h1><div class="text-muted">{% if leitura %}As obrigações acessórias e rotinas fiscais do setor, com regime, condição e prazo de cada uma. Somente consulta.{% else %}Cadastre os tipos de demanda (obrigações acessórias e rotinas fiscais) e ajuste regime, condição e prazo de cada uma. As colunas do quadro de Entregas vêm daqui.{% endif %}</div></div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('entregas.pagina') }}"><i class="bi bi-kanban"></i> Ir para Entregas</a>
+    <button class="btn btn-laranja" id="btnNova" {{ 'hidden' if leitura }}><i class="bi bi-plus-lg"></i> Nova demanda</button>
+  </div>
+</div>
+
+<div class="bloco p-0 overflow-hidden"><div class="table-responsive">
+  <table class="table table-hover tabela align-middle mb-0">
+    <thead><tr><th class="ps-3">Demanda</th><th>Periodicidade</th><th>Prazo</th><th>Quem possui</th><th>Geração</th><th>Entregas</th><th>Ativa</th><th></th></tr></thead>
+    <tbody id="corpo"></tbody>
+  </table>
+</div></div>
+<div class="small text-muted mt-2" {{ 'hidden' if leitura }}>Alterar o prazo recalcula as próximas gerações; entregas já criadas mantêm o vencimento (ajuste-as no cartão, se preciso). Demandas com entregas não podem ser excluídas — desative-as.</div>
+
+<div class="modal fade" id="mEdit" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="eTitulo">Demanda</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><div class="row g-3">
+    <div class="col-md-8"><label class="form-label">Nome da demanda *</label><input class="form-control" id="eNome" placeholder="Ex.: COOPERA, Fronteira, DIRBI…"></div>
+    <div class="col-6 col-md-2"><label class="form-label">Cor</label><input type="color" class="form-control form-control-color w-100" id="eCor"></div>
+    <div class="col-6 col-md-2"><label class="form-label">Ativa</label><div class="form-check form-switch mt-2"><input class="form-check-input" type="checkbox" id="eAtivo"></div></div>
+    <div class="col-md-4"><label class="form-label">Periodicidade</label><select class="form-select" id="ePer"><option value="mensal">Mensal (competência)</option><option value="anual">Anual (ano-calendário)</option></select></div>
+    <div class="col-md-8"><label class="form-label">Regra de vencimento</label><select class="form-select" id="eRegra"></select></div>
+    <div class="col-6 col-md-3" id="gDia"><label class="form-label" id="rDia">Dia (N)</label><input type="number" min="1" max="31" class="form-control" id="eDia"></div>
+    <div class="col-6 col-md-3" id="gMes"><label class="form-label">Mês do vencimento (M)</label><input type="number" min="1" max="12" class="form-control" id="eMes"></div>
+    <div class="col-12"><div class="small text-muted" id="eAjuda"></div></div>
+    <div class="col-12"><label class="form-label">Quem possui (regime)</label><div id="eRegimes"></div><div class="form-text">Nenhum marcado = todos os regimes.</div></div>
+    <div class="col-md-7"><label class="form-label">Condição</label><select class="form-select" id="eReq"></select></div>
+    <div class="col-md-5"><label class="form-label">Geração</label><select class="form-select" id="eGer"><option value="auto">Automática (entra em "Gerar entregas")</option><option value="manual">Manual (condicional, marcada na empresa)</option></select></div>
+    <div class="col-12"><label class="form-label">Descrição / observação</label><textarea class="form-control" rows="3" id="eDesc"></textarea></div>
+    <div class="col-12 text-danger small" id="eErro"></div>
+  </div></div>
+  <div class="modal-footer justify-content-between"><button class="btn btn-outline-danger" id="eExcluir"><i class="bi bi-trash"></i> Excluir</button><button class="btn btn-primary" id="eSalvar">Salvar</button></div>
+</div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const REGIMES = {{ regimes|tojson }}, REGRAS = {{ regras|tojson }}, REQUER = {{ requer|tojson }}, CORES = {{ cores|tojson }};
+let TIPOS = {{ tipos|tojson }}, atual = null; const LEITURA = {{ leitura|tojson }};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const MESES = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+async function api(url, metodo = 'GET', corpo) {
+  const r = await fetch(url, {method: metodo, headers: {'Content-Type': 'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.erro || 'Não foi possível concluir.');
+  return d;
+}
+const curto = r => r.replace('LUCRO ', 'L. ').replace(' NACIONAL', '');
+function prazo(t) {
+  const n = t.dia_vencimento, m = MESES[t.mes_anual] || '';
+  return ({dia_seguinte: `dia ${n} do mês seguinte`, dia_util_2m: `${n}º dia útil do 2º mês seguinte`, ultimo_util_seguinte: 'último dia útil do mês seguinte',
+    dia_2m: `dia ${n} do 2º mês seguinte`, anual_dia: `dia ${n}/${m} do ano seguinte`, anual_ultimo_util: `último dia útil de ${m}`, sem_data: 'sem data fixa'})[t.regra] || '—';
+}
+function desenhar() {
+  $('corpo').innerHTML = TIPOS.map(t => `<tr data-id="${t.id}" class="${t.ativo ? '' : 'text-muted'}" style="${LEITURA ? '' : 'cursor:pointer'}">
+    <td class="ps-3"><span class="etipo" style="--c:${t.cor}">${esc(t.nome)}</span>${t.descricao ? `<div class="small text-muted mt-1" style="max-width:380px">${esc(t.descricao)}</div>` : ''}</td>
+    <td>${t.periodicidade === 'anual' ? 'Anual' : 'Mensal'}</td><td class="fw-semibold">${prazo(t)}</td>
+    <td class="small">${t.regimes.length ? t.regimes.map(curto).join(', ') : 'Todos'}${t.requer ? `<div class="text-muted">${esc(REQUER[t.requer])}</div>` : ''}</td>
+    <td>${t.geracao === 'manual' ? '<span class="pill sem">Manual</span>' : '<span class="pill">Automática</span>'}</td>
+    <td>${t.total}</td><td>${t.ativo ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-dash-circle"></i>'}</td>
+    <td class="text-end pe-3">${LEITURA ? '' : '<button class="btn btn-sm btn-outline-primary">Editar</button>'}</td></tr>`).join('');
+}
+const modal = new bootstrap.Modal($('mEdit'));
+const ANUAIS = ['anual_dia', 'anual_ultimo_util'];
+function montarRegras(escolhida) {   // só mostra as regras compatíveis com a periodicidade
+  const anual = $('ePer').value === 'anual';
+  const ok = Object.keys(REGRAS).filter(k => k === 'sem_data' || ANUAIS.includes(k) === anual);
+  $('eRegra').innerHTML = ok.map(k => `<option value="${k}">${esc(REGRAS[k])}</option>`).join('');
+  $('eRegra').value = ok.includes(escolhida) ? escolhida : (anual ? 'anual_dia' : 'dia_seguinte');
+}
+$('eReq').innerHTML = Object.entries(REQUER).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+$('eRegimes').innerHTML = REGIMES.map(r => `<label class="me-3 text-nowrap"><input type="checkbox" class="form-check-input e-reg" value="${r}"> ${r}</label>`).join('');
+function ajustarCampos() {
+  const r = $('eRegra').value, anual = r.startsWith('anual'), semDia = ['ultimo_util_seguinte', 'sem_data', 'anual_ultimo_util'].includes(r);
+  $('gDia').hidden = semDia; $('gMes').hidden = !anual;
+  $('rDia').textContent = r === 'dia_util_2m' ? 'N-º dia útil' : 'Dia (N)';
+  $('eAjuda').textContent = r === 'sem_data' ? 'Sem data fixa: as entregas são geradas sem vencimento, para você informar em cada cartão.' : 'Prazos que caem em dia não útil (fim de semana/feriado) passam para o próximo dia útil.';
+}
+$('eRegra').onchange = ajustarCampos;
+$('ePer').onchange = () => { montarRegras($('eRegra').value); ajustarCampos(); };
+function abrir(t) {
+  atual = t; $('eErro').textContent = ''; $('eTitulo').textContent = t ? `Editar demanda · ${t.nome}` : 'Nova demanda';
+  const d = t || {nome: '', cor: CORES[TIPOS.length % CORES.length], ativo: true, periodicidade: 'mensal', regra: 'sem_data', dia_vencimento: '', mes_anual: '', regimes: [], requer: '', geracao: 'auto', descricao: ''};
+  $('eNome').value = d.nome; $('eCor').value = d.cor; $('eAtivo').checked = d.ativo; $('ePer').value = d.periodicidade; montarRegras(d.regra);
+  $('eDia').value = d.dia_vencimento ?? ''; $('eMes').value = d.mes_anual ?? ''; $('eReq').value = d.requer || ''; $('eGer').value = d.geracao; $('eDesc').value = d.descricao || '';
+  document.querySelectorAll('.e-reg').forEach(c => c.checked = d.regimes.includes(c.value));
+  $('eExcluir').hidden = !t; ajustarCampos(); modal.show();
+}
+$('btnNova').onclick = () => { if (!LEITURA) abrir(null); };
+$('corpo').addEventListener('click', e => { if (LEITURA) return; const tr = e.target.closest('tr'); if (tr) abrir(TIPOS.find(t => t.id === +tr.dataset.id)); });
+$('eSalvar').onclick = async () => {
+  const corpo = {nome: $('eNome').value, cor: $('eCor').value, ativo: $('eAtivo').checked, periodicidade: $('ePer').value, regra: $('eRegra').value,
+    dia_vencimento: $('gDia').hidden ? '' : $('eDia').value, mes_anual: $('gMes').hidden ? '' : $('eMes').value,
+    regimes: [...document.querySelectorAll('.e-reg:checked')].map(c => c.value), requer: $('eReq').value, geracao: $('eGer').value, descricao: $('eDesc').value};
+  try { TIPOS = await api(atual ? `/api/entrega-tipos/${atual.id}` : '/api/entrega-tipos', atual ? 'PUT' : 'POST', corpo); desenhar(); modal.hide(); }
+  catch (err) { $('eErro').textContent = err.message; }
+};
+$('eExcluir').onclick = async () => {
+  if (!confirm(`Excluir a demanda ${atual.nome}?`)) return;
+  try { TIPOS = await api(`/api/entrega-tipos/${atual.id}`, 'DELETE'); desenhar(); modal.hide(); } catch (err) { $('eErro').textContent = err.message; }
+};
+desenhar();
+</script>
+{% endblock %}
